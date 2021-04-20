@@ -53,6 +53,3 @@ If you've cloned the project, the packages will restore upon first build.
 dotnet build --output ../bin/Debug
 cd /bin/Debug/netcoreapp3.1
 ```
-
-## Windows
-
