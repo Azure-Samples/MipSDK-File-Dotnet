@@ -10,9 +10,9 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.FileExtensions" Version="3.1.9" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="3.1.9" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="3.1.9" />
-    <PackageReference Include="microsoft.identity.client" Version="4.18.0" />
-    <PackageReference Include="Microsoft.InformationProtection.File.Ubuntu1804" Version="1.7.133" />
-    <Content Include="appsettings.json" CopyToPublishDirectory="Always"/>
-  </ItemGroup>
-
+    <PackageReference Include="microsoft.identity.client" Version="4.18.0" /> 
+    <PackageReference Include="Microsoft.InformationProtection.File.Ubuntu1804" Version="1.7.147" Condition="'$(OS)'=='Unix'"/>       
+    <PackageReference Include="Microsoft.InformationProtection.File" Version="1.7.147" Condition="'$(OS)'=='Windows_NT'"/>       
+    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup> 
 </Project>

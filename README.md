@@ -24,17 +24,24 @@ This sample application will work on Ubuntu 18.04 or Windows. It's important to 
 ```bash
 sudo apt-get install scons libgsf-1-dev libssl-dev libsecret-1-dev freeglut3-dev libcpprest-dev libcurl3-dev uuid-dev
 ```
+
+From here, the project will auto-install all dependencies. If building the sample from scratch, 
+
 ### Install the Microsoft Authentication Library dependency
 
-MSAL on Ubuntu, when authentication in a public client application, will use a browser to perform authentication. This requires the xdg-utils package. 
+MSAL on Ubuntu, when authentication in a public client application, will use a browser to perform authentication. This requires the xdg-utils package. This is included only for demonstration and not required for other auth patterns. 
 
 ```bash
 sudo apt-get install xdg-utils
 ```
 
-### Install the NuGet Packages
+## Windows
 
-The Ubuntu package is a separate package from the Windows C++/.NET Package. In the project directory, add the package by running:
+Running on Windows requires that the [Visual C++ Runtime redistributable(https://visualstudio.microsoft.com/downloads/#microsoft-visual-c-redistributable-for-visual-studio-2019)] is installed. 
+
+## Install the NuGet Packages
+
+In the project directory, add the required packages by running:
 
 ```bash
 dotnet add package Microsoft.Extensions.Configuration
@@ -42,14 +49,31 @@ dotnet add packageMicrosoft.Extensions.Configuration.FileExtensions
 dotnet add package Microsoft.Extensions.Configuration.Json
 dotnet add package Microsoft.Extensions.DependencyInjection
 dotnet add package microsoft.identity.client
+```
+
+If running on Ubuntu, install the Ubuntu package. 
+
+```bash
 dotnet add package Microsoft.InformationProtection.File.Ubuntu1804
 ```
 
-If you've cloned the project, the packages will restore upon first build. 
+If running on Windows, install the base MIP SDK package. 
+
+```bash
+dotnet add package Microsoft.InformationProtection.File
+```
+
+### Update appsettings.json
+
+[Register an application in Azure Active Directory.](https://docs.microsoft.com/information-protection/develop/setup-configure-mip#register-a-client-application-with-azure-active-directory) Once complete, populate the **appsettings.json** file with details from the application registration: clientId, tenantId, and redirect URI. Change **ida:IsMultiTenantApp** depending upon the type of application you've registered. 
 
 ### Build the project and run
 
+From the **/src** irectory, run the following to build: 
+
 ```bash
 dotnet build --output ../bin/Debug
-cd /bin/Debug/netcoreapp3.1
 ```
+
+The application will output to **mip-filesdk-dotnet-core/bin/Debug/**. Run the app by executing **./mipsdk.exe** or **./mipsdk**
+

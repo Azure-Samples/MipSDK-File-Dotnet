@@ -1,12 +1,15 @@
 ﻿using System;
-using Microsoft.InformationProtection.File;
-using Microsoft.InformationProtection;
-using Microsoft.InformationProtection.Policy;
 using System.Collections.Generic;
+
+using Microsoft.InformationProtection;
+using Microsoft.InformationProtection.Exceptions;
+using Microsoft.InformationProtection.File;
+using Microsoft.InformationProtection.Policy;
+using Microsoft.InformationProtection.Protection;
 
 namespace mipsdk
 {
-    class Program
+    public class Program
     {
         
         private static string clientId;
@@ -15,7 +18,7 @@ namespace mipsdk
         private IFileEngine engine;
         private IFileHandler handler;
 
-        static void Main(string[] args)
+        static int Main(string[] args)
         {
            AppConfig config = new AppConfig();
            clientId = config.GetClientId();
@@ -37,7 +40,7 @@ namespace mipsdk
             // List all labels available to the engine created in Action
             IEnumerable<Label> labels = action.ListLabels();          
 
-          foreach (var label in labels)
+            foreach (var label in labels)
             {
                 Console.WriteLine(string.Format("{0} - {1}", label.Name, label.Id));
 
@@ -50,54 +53,45 @@ namespace mipsdk
                 }
             }
 
-        }
+            Console.Write("Enter a label ID: ");
+            string labelId = Console.ReadLine();
 
-        public bool SetLabel(string labelId)
-        {
-            LabelingOptions options = new LabelingOptions();
-            options.AssignmentMethod = AssignmentMethod.Standard;
-                                    
-            // First Attempt to label
-            try 
+            Console.Write("Enter an input file path: ");
+            string inputPath = Console.ReadLine();
+            if(!System.IO.File.Exists(inputPath))
             {
-                handler.SetLabel(engine.GetLabelById(labelId), options, new ProtectionSettings());
+                Console.WriteLine("Invalid path.");
+                return -1;
             }
 
-            // Catch the adhoc proteciton required, generate protection descriptor, and try again.
-            catch (Microsoft.InformationProtection.Exceptions.AdhocProtectionRequiredException ex)
-            {                
-                // Generate a list of all users who should have the set of roles. 
-                List<string> userList = new List<string>()
-                {
-                    "alice@milt0r.com","bob@milt0r.com"
-                };
+            Console.Write("Enter an output file path: ");
+            string outputPath = Console.ReadLine();
 
-                // Roles for the users
-                List<string> rolelist = new List<string>()
-                {
-                    "OWNER"
-                };
-                
-                List<UserRoles> userRolesList = new List<UserRoles>()
-                {
-                    new UserRoles(userList, rolelist)
-                };
-                
-                // Use userroles to generate descriptor. 
-                ProtectionDescriptor descriptor = new ProtectionDescriptor(userRolesList);                
-                // Set protection using descriptor
-                handler.SetProtection(descriptor, new ProtectionSettings());
-
-                //try to set label
-                handler.SetLabel(engine.GetLabelById(labelId), options, new ProtectionSettings());
-                return false;
-            }
-
-            catch (Microsoft.InformationProtection.Exceptions.JustificationRequiredException ex)
+            Action.FileOptions options = new Action.FileOptions()
             {
-                return false;
-            }
-        return true;
-        }
+                FileName = inputPath,
+                OutputName = outputPath,
+                LabelId = labelId,
+                DataState = DataState.Rest,
+                AssignmentMethod = AssignmentMethod.Standard,
+                IsAuditDiscoveryEnabled = false,
+                GenerateChangeAuditEvent = false                
+            };
+            
+            System.Console.WriteLine("Writing label {0} to {1}.", labelId, inputPath);
+            // Write label.
+            action.SetLabel(options);      
+            System.Console.WriteLine("Wrote label.");
+            
+            System.Console.WriteLine("Reading label and protection from file.");            
+            options.FileName = options.OutputName;
+
+            Action action2 = new Action(appInfo);
+            ContentLabel contentLabel = action2.GetLabel(options);
+            
+            Console.WriteLine(string.Format("File Label: {0} \r\nIsProtected: {1}", contentLabel.Label.Name, contentLabel.IsProtectionAppliedFromLabel.ToString()));
+
+            return 0;                  
+        }        
     }
 }

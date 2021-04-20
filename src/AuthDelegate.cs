@@ -24,8 +24,7 @@ public class AuthDelegateImpl : IAuthDelegate
 
     public AuthDelegateImpl(ApplicationInfo appInfo)
     {
-        redirectUri = config.GetRedirectUri();
-        System.Console.WriteLine(redirectUri);
+        redirectUri = config.GetRedirectUri();        
         isMultitenantApp = Convert.ToBoolean(config.GetIsMultiTenantApp());
         tenant = config.GetTenantId();
         this.appInfo = appInfo;
