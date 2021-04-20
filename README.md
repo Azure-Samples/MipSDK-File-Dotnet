@@ -1,57 +1,58 @@
-# Project Name
+---
+page_type: sample
+languages:
+- csharp
+products:
+- azure
+name: Microsoft Information Protection File SDK .NET Core Sample App
+description: "This sample application demonstrates using the Microsoft Information Protection SDK .NET wrapper to label and read a label from a file."
+urlFragment: mip-filesdk-dotnet-core
+---
 
-(short, 1-3 sentenced, description of the project)
+# MIP SDK .NET Core Sample
 
-## Features
+This sample application will work on Ubuntu 18.04 or Windows. It's important to install the correct NuGet package, depending on which platform you're using.
 
-This project framework provides the following features:
+## Ubuntu 18.04
 
-* Feature 1
-* Feature 2
-* ...
+### Install .NET Core
 
-## Getting Started
+ [Install .NET Core SDK on Ubuntu](https://docs.microsoft.com/en-us/dotnet/core/install/linux-ubuntu)
 
-### Prerequisites
+### Install the MIP SDK dependencies on Linux.
 
-(ideally very short, if any)
+```bash
+sudo apt-get install scons libgsf-1-dev libssl-dev libsecret-1-dev freeglut3-dev libcpprest-dev libcurl3-dev uuid-dev
+```
+### Install the Microsoft Authentication Library dependency
 
-- OS
-- Library version
-- ...
+MSAL on Ubuntu, when authentication in a public client application, will use a browser to perform authentication. This requires the xdg-utils package. 
 
-### Installation
+```bash
+sudo apt-get install xdg-utils
+```
 
-(ideally very short)
+### Install the NuGet Packages
 
-- npm install [package name]
-- mvn install
-- ...
+The Ubuntu package is a separate package from the Windows C++/.NET Package. In the project directory, add the package by running:
 
-### Quickstart
-(Add steps to get up and running quickly)
+```bash
+dotnet add package Microsoft.Extensions.Configuration
+dotnet add packageMicrosoft.Extensions.Configuration.FileExtensions
+dotnet add package Microsoft.Extensions.Configuration.Json
+dotnet add package Microsoft.Extensions.DependencyInjection
+dotnet add package microsoft.identity.client
+dotnet add package Microsoft.InformationProtection.File.Ubuntu1804
+```
 
-1. git clone [repository clone url]
-2. cd [respository name]
-3. ...
+If you've cloned the project, the packages will restore upon first build. 
 
+### Build the project and run
 
-## Demo
+```bash
+dotnet build --output ../bin/Debug
+cd /bin/Debug/netcoreapp3.1
+```
 
-A demo app is included to show how to use the project.
+## Windows
 
-To run the demo, follow these steps:
-
-(Add steps to start up the demo)
-
-1.
-2.
-3.
-
-## Resources
-
-(Any additional resources or related projects)
-
-- Link to supporting information
-- Link to similar sample
-- ...
