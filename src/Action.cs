@@ -111,12 +111,7 @@ namespace mipsdk
         /// <param name="authDelegate"></param>
         /// <returns></returns>
         private IFileProfile CreateFileProfile(ApplicationInfo appInfo)
-        {
-            TelemetryConfiguration config = new TelemetryConfiguration()
-            {
-                IsMinimalTelemetryEnabled = true
-            };
-
+        {            
             // Initialize MipContext
             mipContext = MIP.CreateMipContext(appInfo, "mip_data", LogLevel.Trace, null, null);
 
