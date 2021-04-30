@@ -25,8 +25,6 @@ This sample application will work on Ubuntu 18.04 or Windows. It's important to 
 sudo apt-get install scons libgsf-1-dev libssl-dev libsecret-1-dev freeglut3-dev libcpprest-dev libcurl3-dev uuid-dev
 ```
 
-From here, the project will auto-install all dependencies. If building the sample from scratch, 
-
 ### Install the Microsoft Authentication Library dependency
 
 MSAL on Ubuntu, when authentication in a public client application, will use a browser to perform authentication. This requires the xdg-utils package. This is included only for demonstration and not required for other auth patterns. 
@@ -40,6 +38,8 @@ sudo apt-get install xdg-utils
 Running on Windows requires that the [Visual C++ Runtime redistributable(https://visualstudio.microsoft.com/downloads/#microsoft-visual-c-redistributable-for-visual-studio-2019)] is installed. 
 
 ## Install the NuGet Packages
+
+This step is required only for new projects. Cloning this repo will auto-restore dependencies.
 
 In the project directory, add the required packages by running:
 
@@ -69,7 +69,7 @@ dotnet add package Microsoft.InformationProtection.File
 
 ### Build the project and run
 
-From the **/src** irectory, run the following to build: 
+From the **/src** directory, run the following to build: 
 
 ```bash
 dotnet build --output ../bin/Debug
