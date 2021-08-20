@@ -8,9 +8,7 @@ using System.Threading.Tasks;
 public class AuthDelegateImpl : IAuthDelegate
 {
     AppConfig config = new AppConfig();
-
-    // Set the redirect URI from the AAD Application Registration.
-    private static string redirectUri;
+    
     private static bool isMultitenantApp;
     private static string tenant;
     private ApplicationInfo appInfo;
@@ -24,7 +22,7 @@ public class AuthDelegateImpl : IAuthDelegate
 
     public AuthDelegateImpl(ApplicationInfo appInfo)
     {
-        redirectUri = config.GetRedirectUri();        
+        //redirectUri = config.GetRedirectUri();        
         isMultitenantApp = Convert.ToBoolean(config.GetIsMultiTenantApp());
         tenant = config.GetTenantId();
         this.appInfo = appInfo;

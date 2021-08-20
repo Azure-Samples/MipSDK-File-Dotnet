@@ -4,7 +4,6 @@ languages:
 - csharp
 products:
 - azure
-name: Microsoft Information Protection File SDK .NET Core Sample App
 description: "This sample application demonstrates using the Microsoft Information Protection SDK .NET wrapper to label and read a label from a file."
 urlFragment: mip-filesdk-dotnet-core
 ---

@@ -90,7 +90,8 @@ namespace mipsdk
             ContentLabel contentLabel = action2.GetLabel(options);
             
             Console.WriteLine(string.Format("File Label: {0} \r\nIsProtected: {1}", contentLabel.Label.Name, contentLabel.IsProtectionAppliedFromLabel.ToString()));
-
+            System.Console.WriteLine("Press a key to exit.");
+            Console.ReadKey();
             return 0;                  
         }        
     }
