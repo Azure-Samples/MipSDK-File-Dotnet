@@ -11,12 +11,9 @@ namespace mipsdk
 {
     public class Program
     {
-        
         private static string clientId;
         private static string appName;
         private static string appVersion;
-        private IFileEngine engine;
-        private IFileHandler handler;
 
         static int Main(string[] args)
         {
