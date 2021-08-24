@@ -79,8 +79,13 @@ namespace mipsdk
             // Initialize AuthDelegateImplementation using AppInfo. 
             authDelegate = new AuthDelegateImpl(this.appInfo);
 
-            // Initialize SDK DLLs. If DLLs are missing or wrong type, this will throw an exception
+            // Create MipConfiguration Object
+            MipConfiguration mipConfiguration = new MipConfiguration(appInfo, "mip_data", LogLevel.Trace, false);
+            
+            // Create MipContext using Configuration
+            mipContext = MIP.CreateMipContext(mipConfiguration);
 
+            // Initialize SDK DLLs. If DLLs are missing or wrong type, this will throw an exception
             MIP.Initialize(MipComponent.File);
 
             // This method in AuthDelegateImplementation triggers auth against Graph so that we can get the user ID.
@@ -100,6 +105,7 @@ namespace mipsdk
         {
             engine = null;
             profile = null;
+            mipContext.Dispose();
             mipContext = null;
         }
 
@@ -111,10 +117,7 @@ namespace mipsdk
         /// <param name="authDelegate"></param>
         /// <returns></returns>
         private IFileProfile CreateFileProfile(ApplicationInfo appInfo)
-        {            
-            // Initialize MipContext
-            mipContext = MIP.CreateMipContext(appInfo, "mip_data", LogLevel.Trace, null, null);
-
+        {                      
             // Initialize file profile settings to create/use local state.                
             var profileSettings = new FileProfileSettings(mipContext,
                     CacheStorageType.OnDiskEncrypted,
@@ -124,7 +127,6 @@ namespace mipsdk
             // IFileProfile is the root of all SDK operations for a given application.
             var profile = Task.Run(async () => await MIP.LoadFileProfileAsync(profileSettings)).Result;
             return profile;
-
         }
 
         /// <summary>
@@ -150,6 +152,8 @@ namespace mipsdk
 
             // Create file settings object. Passing in empty string for the first parameter, engine ID, will cause the SDK to generate a GUID.
             // Locale settings are supported and should be provided based on the machine locale, particular for client applications.
+            // In this sample, the first parameter is a string containing the user email. This will be used as the unique identifier
+            // for the engine, used to reload the same engine across sessions. 
             var engineSettings = new FileEngineSettings(identity.Email, authDelegate, "", "en-US")
             {
                 // Provide the identity for service discovery.
@@ -232,9 +236,8 @@ namespace mipsdk
             {
                 List<string> users = new List<string>()
                 {
-                    "alice@milt0r.com",
-                    "bob@milt0r.com",
-                    "mmtom@hotmail.com"
+                    "user1@contoso.com",
+                    "user2@contoso.com"                    
                 };
 
                 List<string> roles = new List<string>()
@@ -256,7 +259,13 @@ namespace mipsdk
 
             // The change isn't committed to the file referenced by the handler until CommitAsync() is called.
             // Pass the desired output file name in to the CommitAsync() function.
-            var result = Task.Run(async () => await handler.CommitAsync(options.OutputName)).Result;
+            bool result = false;
+            
+            // Only call commit if the handler has been modified.
+            if(handler.IsModified())
+            {
+                result = Task.Run(async () => await handler.CommitAsync(options.OutputName)).Result;
+            }
 
             // If the commit was successful and GenerateChangeAuditEvents is true, call NotifyCommitSuccessful()
             if (result && options.GenerateChangeAuditEvent)
@@ -279,6 +288,7 @@ namespace mipsdk
             return handler.Label;
         }
 
+        // Demonstrates how to fetch protection details about a file.
         public ProtectionDetails GetProtectionDetails(FileOptions options)
         {
 
@@ -288,7 +298,7 @@ namespace mipsdk
             {
                 UserRights = handler.Protection.ProtectionDescriptor.UserRights,
                 UserRoles = handler.Protection.ProtectionDescriptor.UserRoles,
-                IsProtected = FileHandler.IsProtected(options.FileName, mipContext),
+                IsProtected = FileHandler.GetFileStatus(options.FileName, mipContext).IsProtected(),
                 TemplateId = handler.Protection.ProtectionDescriptor.TemplateId ?? string.Empty
             };
         }  

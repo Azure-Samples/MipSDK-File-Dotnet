@@ -4,7 +4,6 @@ languages:
 - csharp
 products:
 - azure
-name: Microsoft Information Protection File SDK .NET Core Sample App
 description: "This sample application demonstrates using the Microsoft Information Protection SDK .NET wrapper to label and read a label from a file."
 urlFragment: mip-filesdk-dotnet-core
 ---
@@ -51,10 +50,16 @@ dotnet add package Microsoft.Extensions.DependencyInjection
 dotnet add package microsoft.identity.client
 ```
 
-If running on Ubuntu, install the Ubuntu package. 
+If running on Ubuntu 18.04, install the Ubuntu 18.04 package. 
 
 ```bash
 dotnet add package Microsoft.InformationProtection.File.Ubuntu1804
+```
+
+If running on Ubuntu 20.04, install the Ubuntu 20.04 package. 
+
+```bash
+dotnet add package Microsoft.InformationProtection.File.Ubuntu2004
 ```
 
 If running on Windows, install the base MIP SDK package. 
