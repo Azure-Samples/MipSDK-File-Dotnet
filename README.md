@@ -10,9 +10,9 @@ urlFragment: mip-filesdk-dotnet-core
 
 # MIP SDK .NET Core Sample
 
-This sample application will work on Ubuntu 18.04 or Windows. It's important to install the correct NuGet package, depending on which platform you're using.
+This sample application will work on Ubuntu 18.04/20.04 or Windows. It's important to install the correct NuGet package, depending on which platform you're using.
 
-## Ubuntu 18.04
+## Ubuntu 18.04 and 20.04
 
 ### Install .NET Core
 
@@ -34,7 +34,7 @@ sudo apt-get install xdg-utils
 
 ## Windows
 
-Running on Windows requires that the [Visual C++ Runtime redistributable(https://visualstudio.microsoft.com/downloads/#microsoft-visual-c-redistributable-for-visual-studio-2019)] is installed. 
+Running on Windows requires that the [Visual C++ Runtime redistributable](https://visualstudio.microsoft.com/downloads/#microsoft-visual-c-redistributable-for-visual-studio-2019) is installed. 
 
 ## Install the NuGet Packages
 
