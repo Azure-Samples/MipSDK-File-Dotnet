@@ -50,11 +50,6 @@ namespace mipsdk
         public struct FileOptions
         {
             public string FileName;
-            public string OutputName;
-            public string LabelId;
-            public DataState DataState;
-            public AssignmentMethod AssignmentMethod;
-            public ActionSource ActionSource;
             public bool IsAuditDiscoveryEnabled;
             public bool GenerateChangeAuditEvent;
         }
@@ -158,8 +153,12 @@ namespace mipsdk
             {
                 // Provide the identity for service discovery.
                 Identity = identity,
-                ConfiguredFunctionality = configuredFunctions
+                ConfiguredFunctionality = configuredFunctions,
+                ProtectionOnlyEngine = true,
+                CustomSettings = new List<KeyValuePair<string, string>>()
             };
+
+            engineSettings.CustomSettings.Add(new KeyValuePair<string, string>("enable_msg_file_type", "true"));
 
             // Add the IFileEngine to the profile and return.
             var engine = Task.Run(async () => await profile.AddEngineAsync(engineSettings)).Result;
@@ -183,111 +182,6 @@ namespace mipsdk
         }
 
 
-        /// <summary>
-        /// List all labels from the engine and return in IEnumerable<Label>
-        /// </summary>
-        /// <returns></returns>
-        public IEnumerable<Label> ListLabels()
-        {
-            // Get labels from the engine and return.
-            // For a user principal, these will be user specific.
-            // For a service principal, these may be service specific or global.
-            return engine.SensitivityLabels;
-        }
-
-        /// <summary>
-        /// Set the label on the given file. 
-        /// Options for the labeling operation are provided in the FileOptions parameter.
-        /// </summary>
-        /// <param name="options">Details about file input, output, label to apply, etc.</param>
-        /// <returns></returns>
-        public bool SetLabel(FileOptions options)
-        {
-
-            // LabelingOptions allows us to set the metadata associated with the labeling operations.
-            // Review the API Spec at https://aka.ms/mipsdkdocs for details
-            LabelingOptions labelingOptions = new LabelingOptions()
-            {
-                AssignmentMethod = options.AssignmentMethod
-            };
-
-            var handler = CreateFileHandler(options);
-
-            // Use the SetLabel method on the handler, providing label ID and LabelingOptions
-            // The handler already references a file, so those details aren't needed.
-
-            try
-            {
-                handler.SetLabel(engine.GetLabelById(options.LabelId), labelingOptions, new ProtectionSettings());
-            }
-
-            catch (Microsoft.InformationProtection.Exceptions.JustificationRequiredException)
-            {
-                Console.Write("Please provide justification: ");
-                string justification = Console.ReadLine();
-
-                labelingOptions.IsDowngradeJustified = true;
-                labelingOptions.JustificationMessage = justification;
-
-                handler.SetLabel(engine.GetLabelById(options.LabelId), labelingOptions, new ProtectionSettings());
-            }
-
-            catch (Microsoft.InformationProtection.Exceptions.AdhocProtectionRequiredException)
-            {
-                List<string> users = new List<string>()
-                {
-                    "user1@contoso.com",
-                    "user2@contoso.com"                    
-                };
-
-                List<string> roles = new List<string>()
-                {
-                    Microsoft.InformationProtection.Protection.Roles.Viewer
-                };
-
-                List<UserRoles> userroles = new List<UserRoles>()
-                {
-                    new UserRoles(users, roles)
-                };
-
-                ProtectionDescriptor protectionDescriptor = new ProtectionDescriptor(userroles);
-
-                handler.SetProtection(protectionDescriptor, new ProtectionSettings());
-                handler.SetLabel(engine.GetLabelById(options.LabelId), labelingOptions, new ProtectionSettings());
-            }
-
-
-            // The change isn't committed to the file referenced by the handler until CommitAsync() is called.
-            // Pass the desired output file name in to the CommitAsync() function.
-            bool result = false;
-            
-            // Only call commit if the handler has been modified.
-            if(handler.IsModified())
-            {
-                result = Task.Run(async () => await handler.CommitAsync(options.OutputName)).Result;
-            }
-
-            // If the commit was successful and GenerateChangeAuditEvents is true, call NotifyCommitSuccessful()
-            if (result && options.GenerateChangeAuditEvent)
-            {
-                // Submits and audit event about the labeling action to Azure Information Protection Analytics 
-                handler.NotifyCommitSuccessful(options.FileName);
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Read the label from a file provided via FileOptions.
-        /// </summary>
-        /// <param name="options"></param>
-        /// <returns></returns>
-        public ContentLabel GetLabel(FileOptions options)
-        {
-            var handler = CreateFileHandler(options);
-            return handler.Label;
-        }
-
         // Demonstrates how to fetch protection details about a file.
         public ProtectionDetails GetProtectionDetails(FileOptions options)
         {
@@ -301,6 +195,38 @@ namespace mipsdk
                 IsProtected = FileHandler.GetFileStatus(options.FileName, mipContext).IsProtected(),
                 TemplateId = handler.Protection.ProtectionDescriptor.TemplateId ?? string.Empty
             };
+        }
+
+        public void InspectRpmsg(FileOptions options)
+        {
+            var handler = CreateFileHandler(options);
+
+            IFileInspector fileInspector = handler.InspectAsync().GetAwaiter().GetResult();
+            IMsgInspector msgInspector = null;
+
+            switch(fileInspector.Type)
+            {
+                case InspectorType.Msg:
+                 msgInspector = (IMsgInspector)fileInspector;
+                break;
+
+                default:
+
+                break;
+
+            }
+
+            System.Console.WriteLine("Body Type: {0}", msgInspector.BodyType);
+            System.Console.WriteLine("Codepage: {0}", msgInspector.CodePage);
+            if(msgInspector.Attachments.Count() > 0)
+            {
+                foreach(var attachment in msgInspector.Attachments)
+                {
+                    System.Console.WriteLine(attachment.Name);
+                }
+            }
+            System.Console.WriteLine(Encoding.UTF8.GetChars(msgInspector.Body.ToArray()));
+
         }  
     }
 }

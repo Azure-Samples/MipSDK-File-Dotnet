@@ -76,6 +76,7 @@ public class AuthDelegateImpl : IAuthDelegate
                 .WithDefaultRedirectUri()                
                 .Build();
 
+
         }
         var accounts = (_app.GetAccountsAsync()).GetAwaiter().GetResult();
 
