@@ -44,7 +44,7 @@ In the project directory, add the required packages by running:
 
 ```bash
 dotnet add package Microsoft.Extensions.Configuration
-dotnet add packageMicrosoft.Extensions.Configuration.FileExtensions
+dotnet add package Microsoft.Extensions.Configuration.FileExtensions
 dotnet add package Microsoft.Extensions.Configuration.Json
 dotnet add package Microsoft.Extensions.DependencyInjection
 dotnet add package microsoft.identity.client
