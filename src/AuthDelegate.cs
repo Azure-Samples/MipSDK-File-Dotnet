@@ -8,13 +8,15 @@ using System.Threading.Tasks;
 public class AuthDelegateImpl : IAuthDelegate
 {
     AppConfig config = new AppConfig();
-    
+
     private static bool isMultitenantApp;
     private static string tenant;
     private ApplicationInfo appInfo;
+    private string clientSecret;
+    private string redirectUri;
 
     // Microsoft Authentication Library IPublicClientApplication
-    private IPublicClientApplication _app;
+    private IConfidentialClientApplication _app;
 
     // Define MSAL scopes.
     // As of the 1.7 release, the two services backing the MIP SDK, RMS and MIP Sync Service, provide resources instead of scopes.
@@ -26,6 +28,8 @@ public class AuthDelegateImpl : IAuthDelegate
         isMultitenantApp = Convert.ToBoolean(config.GetIsMultiTenantApp());
         tenant = config.GetTenantId();
         this.appInfo = appInfo;
+        clientSecret = config.GetAppSecret();
+        redirectUri = config.GetRedirectUri();
     }
 
     /// <summary>
@@ -35,8 +39,7 @@ public class AuthDelegateImpl : IAuthDelegate
     /// Authority and resource are provided from the 401 challenge.
     /// The SDK cares only that an OAuth2 token is returned.How it's fetched isn't important.
     /// In this sample, we fetch the token using Active Directory Authentication Library(ADAL).
-    /// </summary>
-    /// <param name="identity"></param>
+    /// </summary>    /// <param name="identity"></param>
     /// <param name="authority"></param>
     /// <param name="resource"></param>
     /// <returns>The OAuth2 token for the user</returns>
@@ -55,57 +58,37 @@ public class AuthDelegateImpl : IAuthDelegate
     /// <param name="claims"></param>
     /// <returns></returns>
     public async Task<AuthenticationResult> AcquireTokenAsync(string authority, string resource, string claims, bool isMultiTenantApp = true)
-    {
-        AuthenticationResult result = null;
-
+    {        
         // Create an auth context using the provided authority and token cache
-        if (isMultitenantApp)
-            _app = PublicClientApplicationBuilder.Create(appInfo.ApplicationId)
-                .WithAuthority(authority)
-                .WithDefaultRedirectUri()
-                .Build();
-        else
+
+        if (authority.ToLower().Contains("common"))
         {
-            if (authority.ToLower().Contains("common"))
-            {
-                var authorityUri = new Uri(authority);
-                authority = String.Format("https://{0}/{1}", authorityUri.Host, tenant);
-            }
-            _app = PublicClientApplicationBuilder.Create(appInfo.ApplicationId)
-                .WithAuthority(authority)
-                .WithDefaultRedirectUri()                
-                .Build();
-
+            var authorityUri = new Uri(authority);
+            authority = String.Format("https://{0}/{1}", authorityUri.Host, tenant);
         }
-        var accounts = (_app.GetAccountsAsync()).GetAwaiter().GetResult();
 
-        // Append .default to the resource passed in to AcquireToken().
+        IConfidentialClientApplication app;
+       
+        app = ConfidentialClientApplicationBuilder.Create(appInfo.ApplicationId)
+        .WithClientSecret(clientSecret)
+        .WithRedirectUri(redirectUri)
+        .Build();
+
         string[] scopes = new string[] { resource[resource.Length - 1].Equals('/') ? $"{resource}.default" : $"{resource}/.default" };
 
-        try
-        {
-            result = await _app.AcquireTokenSilent(scopes, accounts.FirstOrDefault())
-                .ExecuteAsync();
-        }
-
-        catch (MsalUiRequiredException)
-        {
-            result = _app.AcquireTokenInteractive(scopes)
-                .WithAccount(accounts.FirstOrDefault())
-                .WithPrompt(Prompt.SelectAccount)
-                .ExecuteAsync()
-                .ConfigureAwait(false)
-                .GetAwaiter()
-                .GetResult();
-        }
-
-        // Return the token. The token is sent to the resource.                           
-        return result;
+        AuthenticationResult authResult = app.AcquireTokenForClient(scopes)
+            .WithAuthority(authority)
+            .ExecuteAsync()
+            .GetAwaiter()
+            .GetResult();
+        // Return the token. The token is sent to the resource.
+        return authResult;
+        
     }
 
     /// <summary>
     /// The GetUserIdentity() method is used to pre-identify the user and obtain the UPN. 
-    /// The UPN is later passed set on FileEngineSettings for service location.
+    /// The UPN is later passed set on FileEngineSettings for service location.c
     /// </summary>
     /// <returns>Microsoft.InformationProtection.Identity</returns>
     public Identity GetUserIdentity()
