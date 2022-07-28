@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net6.0</TargetFramework>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,7 +11,8 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="3.1.9" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="3.1.9" />
     <PackageReference Include="microsoft.identity.client" Version="4.18.0" />
-    <PackageReference Include="microsoft.informationprotection.file" Version="1.12.61" Condition="$([MSBuild]::IsOsPlatform('Windows'))" />         
+    <PackageReference Include="microsoft.informationprotection.file" Version="1.12.61" Condition="$([MSBuild]::IsOsPlatform('Windows'))" /> 
+    <PackageReference Include="microsoft.informationprotection.file" Version="1.12.61" Condition="$([MSBuild]::IsOsPlatform('Linux2'))" />        
     <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />       
   </ItemGroup> 
 </Project>

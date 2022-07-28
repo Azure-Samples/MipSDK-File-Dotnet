@@ -251,7 +251,7 @@ namespace mipsdk
                 };
 
                 ProtectionDescriptor protectionDescriptor = new ProtectionDescriptor(userroles);
-
+                
                 handler.SetProtection(protectionDescriptor, new ProtectionSettings());
                 handler.SetLabel(engine.GetLabelById(options.LabelId), labelingOptions, new ProtectionSettings());
             }

@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 public class AuthDelegateImpl : IAuthDelegate
 {
     AppConfig config = new AppConfig();
-    
+
     private static bool isMultitenantApp;
     private static string tenant;
     private ApplicationInfo appInfo;
@@ -59,25 +59,28 @@ public class AuthDelegateImpl : IAuthDelegate
         AuthenticationResult result = null;
 
         // Create an auth context using the provided authority and token cache
-        if (isMultitenantApp)
-            _app = PublicClientApplicationBuilder.Create(appInfo.ApplicationId)
-                .WithAuthority(authority)
-                .WithDefaultRedirectUri()
-                .Build();
-        else
+        if (_app == null)
         {
-            if (authority.ToLower().Contains("common"))
+            if (isMultitenantApp)
+                _app = PublicClientApplicationBuilder.Create(appInfo.ApplicationId)
+                    .WithAuthority(authority)
+                    .WithDefaultRedirectUri()
+                    .Build();
+            else
             {
-                var authorityUri = new Uri(authority);
-                authority = String.Format("https://{0}/{1}", authorityUri.Host, tenant);
-            }
-            _app = PublicClientApplicationBuilder.Create(appInfo.ApplicationId)
-                .WithAuthority(authority)
-                .WithDefaultRedirectUri()                
-                .Build();
+                if (authority.ToLower().Contains("common"))
+                {
+                    var authorityUri = new Uri(authority);
+                    authority = String.Format("https://{0}/{1}", authorityUri.Host, tenant);
+                }
+                _app = PublicClientApplicationBuilder.Create(appInfo.ApplicationId)
+                    .WithAuthority(authority)
+                    .WithDefaultRedirectUri()
+                    .Build();
 
+            }
         }
-        var accounts = (_app.GetAccountsAsync()).GetAwaiter().GetResult();
+        var accounts = await _app.GetAccountsAsync();//).GetAwaiter().GetResult();
 
         // Append .default to the resource passed in to AcquireToken().
         string[] scopes = new string[] { resource[resource.Length - 1].Equals('/') ? $"{resource}.default" : $"{resource}/.default" };
@@ -88,11 +91,10 @@ public class AuthDelegateImpl : IAuthDelegate
                 .ExecuteAsync();
         }
 
-        catch (MsalUiRequiredException)
+        catch (MsalUiRequiredException ex)
         {
+            System.Console.WriteLine(ex.Message);
             result = _app.AcquireTokenInteractive(scopes)
-                .WithAccount(accounts.FirstOrDefault())
-                .WithPrompt(Prompt.SelectAccount)
                 .ExecuteAsync()
                 .ConfigureAwait(false)
                 .GetAwaiter()
