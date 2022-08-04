@@ -6,7 +6,7 @@ products:
 - m365
 - office-365
 description: "This sample application demonstrates using the Microsoft Information Protection SDK .NET wrapper to label and read a label from a file."
-urlFragment: MipSDK-File-Dotnet-Core
+urlFragment: MipSDK-File-Dotnet
 ---
 
 # MIP SDK .NET 6.0 Sample
