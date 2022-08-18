@@ -91,13 +91,13 @@ namespace mipsdk
             // This method in AuthDelegateImplementation triggers auth against Graph so that we can get the user ID.
             //var id = authDelegate.GetUserIdentity();
 
-            Identity id = new Identity("97e27114-463f-453a-901b-ee2f7825cd8f");
-            string appId = "97e27114-463f-453a-901b-ee2f7825cd8f";
+            AppConfig config = new AppConfig();
+            
             // Create profile.
             profile = CreateFileProfile(appInfo);
 
             // Create engine providing Identity from authDelegate to assist with service discovery.
-            engine = CreateFileEngine(appId);
+            engine = CreateFileEngine(appInfo.ApplicationId);
         }
 
         /// <summary>
@@ -139,36 +139,6 @@ namespace mipsdk
         /// </summary>
         /// <param name="identity"></param>
         /// <returns></returns>
-        private IFileEngine CreateFileEngine(Identity identity)
-        {
-
-            // If the profile hasn't been created, do that first. 
-            if (profile == null)
-            {
-                profile = CreateFileProfile(appInfo);
-            }
-
-            var configuredFunctions = new Dictionary<FunctionalityFilterType, bool>();
-            configuredFunctions.Add(FunctionalityFilterType.DoubleKeyProtection, true);
-
-
-            // Create file settings object. Passing in empty string for the first parameter, engine ID, will cause the SDK to generate a GUID.
-            // Locale settings are supported and should be provided based on the machine locale, particular for client applications.
-            // In this sample, the first parameter is a string containing the user email. This will be used as the unique identifier
-            // for the engine, used to reload the same engine across sessions. 
-            var engineSettings = new FileEngineSettings(identity.Email, authDelegate, "", "en-US")
-            {
-                // Provide the identity for service discovery.
-                Identity = identity,
-                ConfiguredFunctionality = configuredFunctions
-            };
-
-            // Add the IFileEngine to the profile and return.
-            var engine = Task.Run(async () => await profile.AddEngineAsync(engineSettings)).Result;
-
-            return engine;
-        }
-
         private IFileEngine CreateFileEngine(string appId)
         {
 
@@ -283,7 +253,7 @@ namespace mipsdk
                 };
 
                 ProtectionDescriptor protectionDescriptor = new ProtectionDescriptor(userroles);
-
+                
                 handler.SetProtection(protectionDescriptor, new ProtectionSettings());
                 handler.SetLabel(engine.GetLabelById(options.LabelId), labelingOptions, new ProtectionSettings());
             }
@@ -295,11 +265,9 @@ namespace mipsdk
             
             // Only call commit if the handler has been modified.
             if(handler.IsModified())
-            {                           
+            {
                 result = Task.Run(async () => await handler.CommitAsync(options.OutputName)).Result;
             }
-
-            
 
             // If the commit was successful and GenerateChangeAuditEvents is true, call NotifyCommitSuccessful()
             if (result && options.GenerateChangeAuditEvent)
@@ -336,5 +304,27 @@ namespace mipsdk
                 TemplateId = handler.Protection.ProtectionDescriptor.TemplateId ?? string.Empty
             };
         }  
+
+        public void RemoveProtection(FileOptions options)
+        {
+            var handler = CreateFileHandler(options);
+            bool result = false;
+            if(handler.Protection != null)
+            {
+                if(handler.Protection.AccessCheck(Rights.Export) || handler.Protection.AccessCheck(Rights.Owner))
+                {
+                    handler.RemoveProtection();
+                    result = Task.Run(async () => await handler.CommitAsync(options.OutputName)).Result;                    
+                }
+                if(result)
+                { 
+                    System.Console.WriteLine("Removed protection from file.");
+                }
+            }
+            else 
+            {
+                System.Console.WriteLine("File is not protected.");
+            }   
+        }
     }
 }

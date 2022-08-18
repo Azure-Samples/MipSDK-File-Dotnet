@@ -16,7 +16,7 @@ public class AuthDelegateImpl : IAuthDelegate
     private string redirectUri;
 
     // Microsoft Authentication Library IPublicClientApplication
-    private IConfidentialClientApplication _app;
+    private IConfidentialClientApplication app;
 
     // Define MSAL scopes.
     // As of the 1.7 release, the two services backing the MIP SDK, RMS and MIP Sync Service, provide resources instead of scopes.
@@ -67,7 +67,7 @@ public class AuthDelegateImpl : IAuthDelegate
             authority = String.Format("https://{0}/{1}", authorityUri.Host, tenant);
         }
 
-        IConfidentialClientApplication app;
+        //IConfidentialClientApplication app;
        
         app = ConfidentialClientApplicationBuilder.Create(appInfo.ApplicationId)
         .WithClientSecret(clientSecret)
