@@ -11,13 +11,13 @@ urlFragment: MipSDK-File-Dotnet
 
 # MIP SDK .NET 6.0 Sample
 
-This sample application will work on Ubuntu 20.04 or Windows. It's important to install the correct NuGet package, depending on which platform you're using.
+This Microsoft Information Protection File SDK sample can run on Windows, or Ubuntu 18.04/20.04. It demonstrates initializing the MIP SDK and labeling a file. 
 
-## Ubuntu 20.04
+.NET 6.0 or later is required to run the sample: https://dotnet.microsoft.com/en-us/download/dotnet/6.0
 
-### Install .NET 6.0
+## Ubuntu
 
- [Install .NET SDK or the .NET Runtime on Ubuntu](https://docs.microsoft.com/en-us/dotnet/core/install/linux-ubuntu)
+If you're running on Ubuntu, follow these steps to install the necessary dependencies. 
 
 ### Install the MIP SDK dependencies on Ubuntu
 
@@ -37,9 +37,7 @@ sudo apt-get install xdg-utils
 
 Running on Windows requires that the [Visual C++ Runtime redistributable](https://visualstudio.microsoft.com/downloads/#microsoft-visual-c-redistributable-for-visual-studio-2019) is installed.
 
-## Install the NuGet Packages
-
-This step is required only for new projects. Cloning this repo will auto-restore dependencies.
+## Required NuGet Packages
 
 In the project directory, add the required packages by running:
 
@@ -54,18 +52,21 @@ dotnet add package microsoft.identity.client
 If running on Ubuntu 18.04, install the Ubuntu 18.04 package.
 
 ```bash
+# Ubuntu 18.04
 dotnet add package Microsoft.InformationProtection.File.Ubuntu1804
 ```
 
 If running on Ubuntu 20.04, install the Ubuntu 20.04 package.
 
 ```bash
+# Ubuntu 20.04
 dotnet add package Microsoft.InformationProtection.File.Ubuntu2004
 ```
 
 If running on Windows, install the base MIP SDK package.
 
-```bash
+```powershell
+# Windows Only
 dotnet add package Microsoft.InformationProtection.File
 ```
 
