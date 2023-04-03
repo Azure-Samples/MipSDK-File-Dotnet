@@ -11,6 +11,9 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="3.1.9" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="3.1.9" />
     <PackageReference Include="microsoft.identity.client" Version="4.18.0" />   
+    <PackageReference Include="microsoft.identity.client" Version="4.18.0" />
+    <PackageReference Include="microsoft.informationprotection.file" Version="1.13.158" Condition="$([MSBuild]::IsOsPlatform('Windows'))" /> 
+    <PackageReference Include="microsoft.informationprotection.file" Version="1.12.61" Condition="$([MSBuild]::IsOsPlatform('Linux2'))" />        
     <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />       
   </ItemGroup> 
 </Project>

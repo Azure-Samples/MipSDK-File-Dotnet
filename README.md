@@ -71,7 +71,7 @@ dotnet add package Microsoft.InformationProtection.File
 
 ### Update appsettings.json
 
-[Register an application in Azure Active Directory.](https://docs.microsoft.com/information-protection/develop/setup-configure-mip#register-a-client-application-with-azure-active-directory) Once complete, populate the **appsettings.json** file with details from the application registration: clientId, tenantId, and redirect URI. Change **ida:IsMultiTenantApp** depending upon the type of application you've registered.
+[Register an application in Azure Active Directory.](https://docs.microsoft.com/information-protection/develop/setup-configure-mip#register-a-client-application-with-azure-active-directory) Once complete, populate the **appsettings.json** file with details from the application registration: clientId and tenantId. Change **ida:IsMultiTenantApp** depending upon the type of application you've registered.
 
 ### Build the project and run
 
