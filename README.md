@@ -43,17 +43,10 @@ In the project directory, add the required packages by running:
 
 ```bash
 dotnet add package Microsoft.Extensions.Configuration
-dotnet add packageMicrosoft.Extensions.Configuration.FileExtensions
+dotnet add package Microsoft.Extensions.Configuration.FileExtensions
 dotnet add package Microsoft.Extensions.Configuration.Json
 dotnet add package Microsoft.Extensions.DependencyInjection
 dotnet add package microsoft.identity.client
-```
-
-If running on Ubuntu 18.04, install the Ubuntu 18.04 package.
-
-```bash
-# Ubuntu 18.04
-dotnet add package Microsoft.InformationProtection.File.Ubuntu1804
 ```
 
 If running on Ubuntu 20.04, install the Ubuntu 20.04 package.
@@ -61,6 +54,13 @@ If running on Ubuntu 20.04, install the Ubuntu 20.04 package.
 ```bash
 # Ubuntu 20.04
 dotnet add package Microsoft.InformationProtection.File.Ubuntu2004
+```
+
+If running on Ubuntu 22.04, install the Ubuntu 22.04 package.
+
+```bash
+# Ubuntu 22.04
+dotnet add package Microsoft.InformationProtection.File.Ubuntu2204
 ```
 
 If running on Windows, install the base MIP SDK package.
