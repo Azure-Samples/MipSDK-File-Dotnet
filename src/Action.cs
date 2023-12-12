@@ -36,6 +36,8 @@ using Microsoft.InformationProtection;
 using Microsoft.InformationProtection.Protection;
 using System.Runtime.InteropServices;
 using Microsoft.InformationProtection.Policy;
+using Microsoft.Extensions.Configuration;
+using System.Formats.Asn1;
 namespace mipsdk
 {
     public class Action
@@ -45,6 +47,8 @@ namespace mipsdk
         private IFileProfile profile;
         private IFileEngine engine;
         private MipContext mipContext;
+
+        private AppConfig config = new();
 
         // Used to pass in options for labeling the file.
         public struct FileOptions
@@ -72,8 +76,10 @@ namespace mipsdk
         /// Constructor for Action class. Pass in AppInfo to simplify passing settings to AuthDelegate.
         /// </summary>
         /// <param name="appInfo"></param>
-        public Action(ApplicationInfo appInfo)
+        public Action(ApplicationInfo appInfo, string delegatedUser = null)
         {
+
+
             this.appInfo = appInfo;
 
             // Initialize AuthDelegateImplementation using AppInfo. 
@@ -81,21 +87,39 @@ namespace mipsdk
 
             // Create MipConfiguration Object
             MipConfiguration mipConfiguration = new MipConfiguration(appInfo, "mip_data", LogLevel.Trace, false);
-            
+
             // Create MipContext using Configuration
             mipContext = MIP.CreateMipContext(mipConfiguration);
 
             // Initialize SDK DLLs. If DLLs are missing or wrong type, this will throw an exception
             MIP.Initialize(MipComponent.File);
 
-            // This method in AuthDelegateImplementation triggers auth against Graph so that we can get the user ID.
-            var id = authDelegate.GetUserIdentity();
-
             // Create profile.
             profile = CreateFileProfile(appInfo);
 
-            // Create engine providing Identity from authDelegate to assist with service discovery.
-            engine = CreateFileEngine(id);
+
+
+            if (delegatedUser == null && !config.GetIsConfidentialClient())
+            {
+                // Create engine providing Identity from authDelegate to assist with service discovery.
+                // This method in AuthDelegateImplementation triggers auth against Graph so that we can get the user ID.
+                var id = authDelegate.GetUserIdentity();
+                engine = CreateFileEngine(id);
+            }
+
+            else if (config.GetIsConfidentialClient() && delegatedUser == null)
+            {
+                var id = appInfo.ApplicationId;
+                // Create engine providing Identity from authDelegate to assist with service discovery.
+                engine = CreateFileEngine(id);
+            }
+
+            else
+            {
+                var id = appInfo.ApplicationId;
+                // Create engine providing Identity from authDelegate to assist with service discovery.
+                engine = CreateFileEngine(id, delegatedUser);
+            }
         }
 
         /// <summary>
@@ -117,7 +141,7 @@ namespace mipsdk
         /// <param name="authDelegate"></param>
         /// <returns></returns>
         private IFileProfile CreateFileProfile(ApplicationInfo appInfo)
-        {                      
+        {
             // Initialize file profile settings to create/use local state.                
             var profileSettings = new FileProfileSettings(mipContext,
                     CacheStorageType.OnDiskEncrypted,
@@ -137,8 +161,9 @@ namespace mipsdk
         /// </summary>
         /// <param name="identity"></param>
         /// <returns></returns>
-        private IFileEngine CreateFileEngine(Identity identity)
+        private IFileEngine CreateFileEngine(string identity, string delegatedUser = null)
         {
+
 
             // If the profile hasn't been created, do that first. 
             if (profile == null)
@@ -146,20 +171,31 @@ namespace mipsdk
                 profile = CreateFileProfile(appInfo);
             }
 
-            var configuredFunctions = new Dictionary<FunctionalityFilterType, bool>();
-            configuredFunctions.Add(FunctionalityFilterType.DoubleKeyProtection, true);
-
-
             // Create file settings object. Passing in empty string for the first parameter, engine ID, will cause the SDK to generate a GUID.
             // Locale settings are supported and should be provided based on the machine locale, particular for client applications.
             // In this sample, the first parameter is a string containing the user email. This will be used as the unique identifier
             // for the engine, used to reload the same engine across sessions. 
-            var engineSettings = new FileEngineSettings(identity.Email, authDelegate, "", "en-US")
+            var engineSettings = new FileEngineSettings(identity, authDelegate, "", "en-US")
+            {
+                //ConfiguredFunctionality = configuredFunctions,
+            };
+
+            if (delegatedUser != null && config.GetIsConfidentialClient())
+            {
+                engineSettings.DelegatedUserEmail = delegatedUser;
+                engineSettings.Cloud = Cloud.Commercial;
+            }
+
+            else if (config.GetIsConfidentialClient())
+            {
+                engineSettings.Cloud = Cloud.Commercial;
+            }
+
+            else
             {
                 // Provide the identity for service discovery.
-                Identity = identity,
-                ConfiguredFunctionality = configuredFunctions
-            };
+                engineSettings.Identity = new Identity(identity);
+            }
 
             // Add the IFileEngine to the profile and return.
             var engine = Task.Run(async () => await profile.AddEngineAsync(engineSettings)).Result;
@@ -187,7 +223,7 @@ namespace mipsdk
         /// List all labels from the engine and return in IEnumerable<Label>
         /// </summary>
         /// <returns></returns>
-        public IEnumerable<Label> ListLabels()
+        public IEnumerable<Label> ListLabels(List<string> contentTypes = null)
         {
             // Get labels from the engine and return.
             // For a user principal, these will be user specific.
@@ -218,6 +254,8 @@ namespace mipsdk
 
             try
             {
+
+                handler.Protection.GetSerializedPublishingLicense();
                 handler.SetLabel(engine.GetLabelById(options.LabelId), labelingOptions, new ProtectionSettings());
             }
 
@@ -237,7 +275,7 @@ namespace mipsdk
                 List<string> users = new List<string>()
                 {
                     "user1@contoso.com",
-                    "user2@contoso.com"                    
+                    "user2@contoso.com"
                 };
 
                 List<string> roles = new List<string>()
@@ -251,7 +289,7 @@ namespace mipsdk
                 };
 
                 ProtectionDescriptor protectionDescriptor = new ProtectionDescriptor(userroles);
-                
+
                 handler.SetProtection(protectionDescriptor, new ProtectionSettings());
                 handler.SetLabel(engine.GetLabelById(options.LabelId), labelingOptions, new ProtectionSettings());
             }
@@ -260,9 +298,9 @@ namespace mipsdk
             // The change isn't committed to the file referenced by the handler until CommitAsync() is called.
             // Pass the desired output file name in to the CommitAsync() function.
             bool result = false;
-            
+
             // Only call commit if the handler has been modified.
-            if(handler.IsModified())
+            if (handler.IsModified())
             {
                 result = Task.Run(async () => await handler.CommitAsync(options.OutputName)).Result;
             }
@@ -285,6 +323,10 @@ namespace mipsdk
         public ContentLabel GetLabel(FileOptions options)
         {
             var handler = CreateFileHandler(options);
+            var status = FileHandler.GetFileStatus(options.FileName, mipContext);
+
+            status.IsLabeled();
+
             return handler.Label;
         }
 
@@ -292,7 +334,11 @@ namespace mipsdk
         public ProtectionDetails GetProtectionDetails(FileOptions options)
         {
 
+
             var handler = CreateFileHandler(options);
+
+            if (handler.Protection == null)
+                throw new Exception("File is not protected.");
 
             return new ProtectionDetails()
             {
@@ -301,6 +347,17 @@ namespace mipsdk
                 IsProtected = FileHandler.GetFileStatus(options.FileName, mipContext).IsProtected(),
                 TemplateId = handler.Protection.ProtectionDescriptor.TemplateId ?? string.Empty
             };
-        }  
+        }
+
+        public List<string> GetRightsForLabelId(string labelId)
+        {
+            ProtectionProfileSettings protectionProfileSettings = new ProtectionProfileSettings(mipContext, CacheStorageType.InMemory, new ConsentDelegateImpl());
+            var profile = MIP.LoadProtectionProfile(protectionProfileSettings);
+            ProtectionEngineSettings protectionEngineSettings = new ProtectionEngineSettings(Guid.NewGuid().ToString(), authDelegate, "", "en-US");
+            protectionEngineSettings.Cloud = Cloud.Commercial;
+            var protectionEngine = profile.AddEngine(protectionEngineSettings);
+
+            return protectionEngine.GetRightsForLabelId(null, labelId, null, null);
+        }
     }
 }
