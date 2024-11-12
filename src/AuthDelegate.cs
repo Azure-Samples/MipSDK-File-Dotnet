@@ -88,6 +88,7 @@ public class AuthDelegateImpl : IAuthDelegate
         try
         {
             result = await _app.AcquireTokenSilent(scopes, accounts.FirstOrDefault())
+                .WithClaims(claims)
                 .ExecuteAsync();
         }
 
@@ -95,6 +96,7 @@ public class AuthDelegateImpl : IAuthDelegate
         {
             System.Console.WriteLine(ex.Message);
             result = _app.AcquireTokenInteractive(scopes)
+                .WithClaims(claims)
                 .ExecuteAsync()
                 .ConfigureAwait(false)
                 .GetAwaiter()
