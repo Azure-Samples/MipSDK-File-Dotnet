@@ -71,16 +71,16 @@ namespace mipsdk
             this.authentication = authentication;
         }
 
-        public static async Task<Action> CreateAsync(AppConfig config)
+        public static async Task<Action> CreateAsync(AppConfig config, string userPrincipalName)
         {
             config.Validate();
+            var identity = new Identity(AuthDelegateImpl.ValidateUserPrincipalName(userPrincipalName));
             InitializeNative();
-            var auth = new AuthDelegateImpl(config);
+            var auth = new AuthDelegateImpl(config, identity.Email);
             MipContext? context = null;
             IFileProfile? profile = null;
             try
             {
-                var identity = await auth.GetUserIdentityAsync().ConfigureAwait(false);
                 context = MIP.CreateMipContext(CreateMipConfiguration(config));
                 profile = await MIP.LoadFileProfileAsync(new FileProfileSettings(
                     context, CacheStorageType.OnDiskEncrypted, new ConsentDelegateImpl(config.ServiceConsent)))

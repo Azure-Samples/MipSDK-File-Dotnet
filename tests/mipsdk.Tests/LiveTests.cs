@@ -22,7 +22,8 @@ public sealed class LiveTests
         CreateDocx(source);
         var original = SHA256.HashData(await File.ReadAllBytesAsync(source));
         using var config = new AppConfig();
-        using var action = await SdkAction.CreateAsync(config);
+        using var action = await SdkAction.CreateAsync(config,
+            Environment.GetEnvironmentVariable("MIPSDK_LIVE_USER")!);
         var options = new SdkAction.FileOptions
         {
             FileName = source,
@@ -80,9 +81,10 @@ internal sealed class LiveFactAttribute : FactAttribute
         [CallerLineNumber] int sourceLineNumber = -1) : base(sourceFilePath, sourceLineNumber)
     {
         if (Environment.GetEnvironmentVariable("MIPSDK_RUN_LIVE") != "1"
+            || string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MIPSDK_LIVE_USER"))
             || string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(labelSetting)))
         {
-            Skip = $"Requires explicit MIPSDK_RUN_LIVE=1 and an approved {labelSetting}.";
+            Skip = $"Requires explicit MIPSDK_RUN_LIVE=1, MIPSDK_LIVE_USER, and an approved {labelSetting}.";
         }
     }
 }

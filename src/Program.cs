@@ -51,7 +51,8 @@ public static class Program
                 if (!string.Equals(Console.ReadLine(), "y", StringComparison.OrdinalIgnoreCase)) { return 3; }
             }
 
-            using var action = await Action.CreateAsync(config);
+            var userPrincipalName = ReadRequired("Enter your organizational account UPN/email: ");
+            using var action = await Action.CreateAsync(config, userPrincipalName);
             foreach (var label in action.ListLabels())
             {
                 Console.WriteLine($"{label.Name} - {label.Id}");

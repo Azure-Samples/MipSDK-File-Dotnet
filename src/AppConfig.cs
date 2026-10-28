@@ -41,14 +41,6 @@ public sealed class AppConfig : IDisposable
         _ => throw new InputValidationException("sdk:Cloud must be Commercial, US_GCC, US_GCC_High, US_DoD, or China_01.")
     };
 
-    public string IdentityResource => Cloud switch
-    {
-        Cloud.US_GCC_High => "https://graph.microsoft.us",
-        Cloud.US_DoD => "https://dod-graph.microsoft.us",
-        Cloud.China_01 => "https://microsoftgraph.chinacloudapi.cn",
-        _ => "https://graph.microsoft.com"
-    };
-
     public string BootstrapAuthority => $"https://{AuthorityHost}/{(IsMultiTenant ? "organizations" : TenantId)}";
 
     public string CachePath
