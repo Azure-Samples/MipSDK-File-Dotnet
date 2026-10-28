@@ -77,11 +77,6 @@ public sealed class AuthDelegateImpl : IAuthDelegate, IDisposable
     internal string ValidateAuthority(string authority)
     {
         var uri = ValidateHttpsUri(authority, "Authority");
-        if (!config.AllowedAuthorityHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase))
-        {
-            throw new InputValidationException("Authority host is not in ida:AllowedAuthorityHosts.");
-        }
-
         var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (segments.Length != 1)
         {
@@ -117,11 +112,6 @@ public sealed class AuthDelegateImpl : IAuthDelegate, IDisposable
             throw new InputValidationException("The SDK resource must be an audience, not an OAuth scope.");
         }
 
-        if (config.AllowedResources.Count > 0
-            && !config.AllowedResources.Contains(normalized, StringComparer.OrdinalIgnoreCase))
-        {
-            throw new InputValidationException("Resource is not in ida:AllowedResources.");
-        }
         return $"{normalized}/.default";
     }
 

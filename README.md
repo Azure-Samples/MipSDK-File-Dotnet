@@ -90,20 +90,14 @@ For example, `MIPSDK_AppSettings__ida__ClientId` overrides `AppSettings:ida:Clie
 | Setting | Behavior |
 | --- | --- |
 | `ida:RedirectUri` | HTTP loopback redirect, default `http://localhost`; must match the public-client registration |
-| `ida:AllowedAuthorityHosts` | Retained hostname boundary; HTTPS/URI validation and MSAL authority validation also remain enabled. Empty list retains the commercial-host fallback |
-| `ida:AllowedResources` | Retained exact audience boundary, normalized for trailing `/`. Must include the cloud's Graph resource when nonempty. An empty list retains the prior unrestricted-HTTPS-audience behavior and is not recommended |
-| `sdk:Cloud` | Explicit engine and diagnostic cloud: `Commercial`, `US_GCC`, `US_GCC_High`, `US_DoD`, or `China_01` |
+| `sdk:Cloud` | Explicit engine and diagnostic cloud, default `Commercial`: `Commercial`, `US_GCC`, `US_GCC_High`, `US_DoD`, or `China_01` |
 | `sdk:ServiceConsent` | SDK service access decision: `AcceptAlways` (existing default), `Accept`, or `Reject`; not Entra/admin consent |
 | `sdk:LogLevel` | SDK log threshold, default `Warning`, rather than the previous `Trace` |
 | `sdk:EnableDiagnosticLogging` | Default `false`; enables diagnostic disk caching/tracing only when explicitly configured and confirmed in the CLI |
 | `sdk:GenerateChangeAuditEvent` | Default `false`; successful-change notification only after output verification |
 | `sdk:CachePath` | Default: per-user local application data under `MipSdkFileSample/<client>/<cloud>`; optional absolute/local override |
 
-The two allowlists are **whole-list overrides**, unlike ordinary scalar settings. The highest-priority provider that defines a list supplies every entry; shorter local arrays or environment lists never inherit trailing entries from defaults. Omitting a list leaves the lower-priority list unchanged. A local JSON `[]` or `null` explicitly clears it: empty authority hosts retain the commercial-host fallback, while empty resources retain the prior unrestricted-HTTPS-audience behavior. **An empty resource list does not block all resources.**
-
-Use indexed environment variables, such as `MIPSDK_AppSettings__ida__AllowedResources__0` and `MIPSDK_AppSettings__ida__AllowedResources__1`, and supply the complete reviewed list, including the cloud's Graph resource. Even one indexed environment entry replaces the entire JSON list. Nonempty scalar list values, named entries, and nested objects are rejected rather than silently falling back to defaults.
-
-Cloud selection is not an endpoint firewall. Retain narrow, intentional authority/resource lists. For sovereign clouds, change both lists to the reviewed endpoints for your deployment; the sample does not silently extend them. Bootstrap mappings are:
+The sample does not maintain authority-host or resource-audience allowlists. `FileEngineSettings.Cloud` is explicitly set from `sdk:Cloud`, so the SDK discovers the policy/protection services for that cloud. MSAL authority validation remains enabled, and token requests use the configured cloud's MSAL authority with the validated SDK tenant and audience. HTTPS/URI validation, single-tenant pinning, and account binding remain in place. Cloud selection is not an endpoint firewall. Bootstrap mappings are:
 
 | Cloud | Authority host | Graph resource |
 | --- | --- | --- |
@@ -179,7 +173,7 @@ The last command is expected to return **2** with the public blank configuration
 
 The **80% managed branch-coverage gate** includes the entire `mipsdk` assembly, with no hand-written source exclusions. Tests cover configuration precedence/validation, cloud/consent, actual MSAL flows against an in-memory identity service, claims/cache/account/tenant handling, label selection, no-op behavior, commit failures, output races, independent protection verification, exception propagation, disposal, CLI validation, and native loading. Coverage instrumentation must not run concurrently against the same binaries.
 
-Native loading proves neither policy access nor protected publishing. A clean dependency advisory report is not a source-code security scan. CI runs the credential-free matrix on Windows and Ubuntu 22.04/24.04, coverage, advisory enforcement, and published-app smoke checks. A separate CodeQL workflow scans C# source. CI actions are pinned to verified release commits; Dependabot maintains package/action updates. These workflows require an actual hosted run before their results can be claimed. Only credential-free coverage is uploaded, not SDK caches, logs, or live content.
+Native loading proves neither policy access nor protected publishing. A clean dependency advisory report is not a source-code security scan. Run the build, tests, coverage, dependency advisory checks, and publish smoke checks locally; this repository does not include a build/test or end-to-end workflow. The CodeQL workflow scans C# source using GitHub's workflow token, and Dependabot maintains package/action updates. Neither requires tenant credentials or app-specific configuration in the repository. Hosted scanning results require an actual completed run before they can be claimed.
 
 ## Opt-in live validation
 
@@ -202,7 +196,7 @@ Each live case also requires its corresponding label variable. Tests generate di
 
 | Symptom | Check |
 | --- | --- |
-| Invalid configuration | Required non-placeholder client/tenant GUIDs, named enums, configuration precedence, selected cloud and allowlists |
+| Invalid configuration | Required non-placeholder client/tenant GUIDs, named enums, configuration precedence, selected cloud |
 | Sign-in failure | Public-client registration, loopback redirect, intended user/tenant, delegated permissions, consent, desktop browser |
 | Native load failure | x64 process, matching OS package, copied native assets, VC++ Redistributable or Ubuntu libraries |
 | No policy/applicable labels | User licensing, published policy, consent, active leaf labels with file scope |

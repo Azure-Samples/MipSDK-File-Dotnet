@@ -23,7 +23,6 @@ public sealed class AuthenticationTests
 
     [Theory]
     [InlineData("http://login.microsoftonline.com/common")]
-    [InlineData("https://example.invalid/common")]
     [InlineData("https://login.microsoftonline.com/consumers")]
     [InlineData("https://login.microsoftonline.com/")]
     [InlineData("https://login.microsoftonline.com/common/extra")]
@@ -40,6 +39,17 @@ public sealed class AuthenticationTests
         Assert.DoesNotContain("synthetic", error.Message);
     }
 
+    [Theory]
+    [InlineData("common")]
+    [InlineData(TestConfig.Tenant)]
+    public void SdkAuthorityAliasRetainsSingleTenantBinding(string tenant)
+    {
+        using var config = TestConfig.Create();
+        using var auth = new AuthDelegateImpl(config);
+        Assert.Equal($"https://login.windows.net/{TestConfig.Tenant}",
+            auth.ValidateAuthority($"https://login.windows.net/{tenant}"));
+    }
+
     [Fact]
     public void MultiTenantChallengesRetainOrganizationalTenant()
     {
@@ -50,14 +60,15 @@ public sealed class AuthenticationTests
     }
 
     [Theory]
-    [InlineData("https://graph.microsoft.com")]
-    [InlineData("https://graph.microsoft.com/")]
-    [InlineData("https://GRAPH.microsoft.com/")]
-    public void ResourcesNormalizeToOneDefaultScope(string resource)
+    [InlineData("https://graph.microsoft.com", "https://graph.microsoft.com/.default")]
+    [InlineData("https://graph.microsoft.com/", "https://graph.microsoft.com/.default")]
+    [InlineData("https://GRAPH.microsoft.com/", "https://graph.microsoft.com/.default")]
+    [InlineData("https://psor.o365syncservice.com", "https://psor.o365syncservice.com/.default")]
+    public void ResourcesNormalizeToOneDefaultScope(string resource, string scope)
     {
         using var config = TestConfig.Create();
         using var auth = new AuthDelegateImpl(config);
-        Assert.Equal("https://graph.microsoft.com/.default", auth.BuildDefaultScope(resource));
+        Assert.Equal(scope, auth.BuildDefaultScope(resource));
     }
 
     [Theory]
@@ -65,9 +76,8 @@ public sealed class AuthenticationTests
     [InlineData("https://graph.microsoft.com/#fragment")]
     [InlineData("https://graph.microsoft.com?query=true")]
     [InlineData("https://graph.microsoft.com/.default")]
-    [InlineData("https://example.invalid")]
     [InlineData("relative")]
-    public void InvalidOrUnapprovedResourcesAreRejected(string resource)
+    public void InvalidResourcesAreRejected(string resource)
     {
         using var config = TestConfig.Create();
         using var auth = new AuthDelegateImpl(config);
@@ -75,9 +85,9 @@ public sealed class AuthenticationTests
     }
 
     [Fact]
-    public void AnExplicitEmptyResourceListPreservesAudienceFallback()
+    public void SdkHttpsAudienceDoesNotRequireSampleConfiguration()
     {
-        using var config = TestConfig.Create(("ida:AllowedResources:0", ""), ("ida:AllowedResources:1", ""));
+        using var config = TestConfig.Create();
         using var auth = new AuthDelegateImpl(config);
         Assert.Equal("https://example.invalid/resource/.default", auth.BuildDefaultScope("https://example.invalid/resource/"));
     }
@@ -128,11 +138,12 @@ public sealed class AuthenticationTests
         Assert.Equal("synthetic-access-token", cached.AccessToken);
         Assert.Single(service.TokenRequests);
         const string claims = """{"access_token":{"synthetic_claim":{"essential":true}}}""";
-        var rms = auth.AcquireToken(identity, $"https://login.microsoftonline.com/common", "https://api.aadrm.com", claims);
+        var rms = auth.AcquireToken(identity, "https://login.windows.net/common", "https://api.aadrm.com", claims);
         Assert.Equal("synthetic-access-token", rms);
         Assert.Equal(2, service.TokenRequests.Count);
         Assert.Contains(Uri.EscapeDataString(claims), service.TokenRequests[1].Body);
         Assert.All(service.TokenRequests, request => Assert.Contains(TestConfig.Tenant, request.Uri.AbsolutePath));
+        Assert.All(service.TokenRequests, request => Assert.Equal("login.microsoftonline.com", request.Uri.Host));
         client.Verify(value => value.AcquireTokenInteractive(It.IsAny<IEnumerable<string>>()), Times.Once);
     }
 

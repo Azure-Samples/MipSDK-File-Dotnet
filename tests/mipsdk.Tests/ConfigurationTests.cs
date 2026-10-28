@@ -41,10 +41,6 @@ public sealed class ConfigurationTests
     [InlineData("ida:RedirectUri", "https://example.invalid")]
     [InlineData("ida:RedirectUri", "http://localhost/#fragment")]
     [InlineData("ida:RedirectUri", "http://localhost/?query=true")]
-    [InlineData("ida:AllowedAuthorityHosts:0", "https://login.microsoftonline.com")]
-    [InlineData("ida:AllowedAuthorityHosts:0", "example.invalid")]
-    [InlineData("ida:AllowedResources:0", "http://graph.microsoft.com")]
-    [InlineData("ida:AllowedResources:0", "https://example.invalid")]
     public void InvalidConfigurationFailsBeforeSdkOrBrowser(string key, string value)
     {
         using var config = TestConfig.Create((key, value));
@@ -62,7 +58,6 @@ public sealed class ConfigurationTests
     public void CloudControlsBootstrapAndEngine(string cloud, string host, string resource)
     {
         using var config = TestConfig.Create(("sdk:Cloud", cloud),
-            ("ida:AllowedAuthorityHosts:0", host), ("ida:AllowedResources:0", resource),
             ("ida:IsMultiTenantApp", "true"), ("ida:TenantGuid", ""));
         config.Validate();
         Assert.Equal(host, config.AuthorityHost);
@@ -122,113 +117,6 @@ public sealed class ConfigurationTests
         finally { Environment.SetEnvironmentVariable(key, previous); }
     }
 
-    [Theory]
-    [InlineData("ida:AllowedResources", "empty")]
-    [InlineData("ida:AllowedResources", "short")]
-    [InlineData("ida:AllowedResources", "null")]
-    [InlineData("ida:AllowedResources", "blank")]
-    [InlineData("ida:AllowedAuthorityHosts", "empty")]
-    [InlineData("ida:AllowedAuthorityHosts", "short")]
-    [InlineData("ida:AllowedAuthorityHosts", "null")]
-    [InlineData("ida:AllowedAuthorityHosts", "blank")]
-    public void LocalAllowlistsReplaceWholeDefaultList(string key, string kind)
-    {
-        using var directory = new TestDirectory();
-        WriteDefaults(directory);
-        var required = key == "ida:AllowedResources" ? "https://graph.microsoft.com" : "login.microsoftonline.com";
-        string[]? values = kind switch
-        {
-            "empty" => [],
-            "short" => [required],
-            "blank" => [" "],
-            _ => null
-        };
-        WriteLocal(directory, key, values);
-        using var config = new AppConfig(directory.Path);
-        config.Validate();
-        string[] expected = kind == "short" || key == "ida:AllowedAuthorityHosts" ? [required] : [];
-        Assert.Equal(expected, GetAllowlist(config, key));
-    }
-
-    [Theory]
-    [InlineData("ida:AllowedResources", false)]
-    [InlineData("ida:AllowedResources", true)]
-    [InlineData("ida:AllowedAuthorityHosts", false)]
-    [InlineData("ida:AllowedAuthorityHosts", true)]
-    public void EnvironmentAllowlistsReplaceWholeLocalList(string key, bool omitRequiredEndpoint)
-    {
-        using var directory = new TestDirectory();
-        WriteDefaults(directory);
-        var resources = key == "ida:AllowedResources";
-        var required = resources ? "https://graph.microsoft.com" : "login.microsoftonline.com";
-        var other = resources ? "https://example.invalid" : "example.invalid";
-        WriteLocal(directory, key, new[] { required, other });
-        var variable = $"MIPSDK_AppSettings__{key.Replace(":", "__")}__0";
-        var previous = Environment.GetEnvironmentVariable(variable);
-        try
-        {
-            var value = omitRequiredEndpoint ? other : required;
-            Environment.SetEnvironmentVariable(variable, value);
-            using var config = new AppConfig(directory.Path);
-            Assert.Equal([value], GetAllowlist(config, key));
-            if (omitRequiredEndpoint) { Assert.Throws<InputValidationException>(config.Validate); }
-            else { config.Validate(); }
-        }
-        finally { Environment.SetEnvironmentVariable(variable, previous); }
-    }
-
-    [Theory]
-    [InlineData("ida:AllowedResources", "scalar")]
-    [InlineData("ida:AllowedResources", "nested")]
-    [InlineData("ida:AllowedResources", "named")]
-    [InlineData("ida:AllowedAuthorityHosts", "scalar")]
-    [InlineData("ida:AllowedAuthorityHosts", "nested")]
-    [InlineData("ida:AllowedAuthorityHosts", "named")]
-    public void MalformedLocalAllowlistsDoNotFallBackToDefaults(string key, string kind)
-    {
-        using var directory = new TestDirectory();
-        WriteDefaults(directory);
-        var validValue = key == "ida:AllowedResources" ? "https://graph.microsoft.com" : "login.microsoftonline.com";
-        object value = kind switch
-        {
-            "scalar" => "synthetic-invalid-list",
-            "named" => new Dictionary<string, object> { ["entry"] = validValue },
-            _ => new Dictionary<string, object> { ["0"] = new { nested = validValue } }
-        };
-        WriteLocal(directory, key, value);
-        using var config = new AppConfig(directory.Path);
-        Assert.Throws<InputValidationException>(config.Validate);
-    }
-
-    [Theory]
-    [InlineData("ida:AllowedResources")]
-    [InlineData("ida:AllowedAuthorityHosts")]
-    public void MalformedEnvironmentAllowlistsDoNotFallBackToJson(string key)
-    {
-        using var directory = new TestDirectory();
-        WriteDefaults(directory);
-        var variable = $"MIPSDK_AppSettings__{key.Replace(":", "__")}";
-        var previous = Environment.GetEnvironmentVariable(variable);
-        try
-        {
-            Environment.SetEnvironmentVariable(variable, "synthetic-invalid-list");
-            using var config = new AppConfig(directory.Path);
-            Assert.Throws<InputValidationException>(config.Validate);
-        }
-        finally { Environment.SetEnvironmentVariable(variable, previous); }
-    }
-
-    [Fact]
-    public void MissingAllowlistsKeepTheirExistingFallbacks()
-    {
-        using var directory = new TestDirectory();
-        WriteDefaults(directory, includeAllowlists: false);
-        using var config = new AppConfig(directory.Path);
-        config.Validate();
-        Assert.Equal(["login.microsoftonline.com"], config.AllowedAuthorityHosts);
-        Assert.Empty(config.AllowedResources);
-    }
-
     [Fact]
     public void MissingDefaultsAreNotSilentlyIgnored()
     {
@@ -237,34 +125,17 @@ public sealed class ConfigurationTests
     }
 
     [Fact]
-    public void EmptyAllowlistsPreserveExistingFallbackSemantics()
+    public void MissingRedirectDefaultsToHttpLoopback()
     {
-        using var config = TestConfig.Create(("ida:AllowedAuthorityHosts:0", ""),
-            ("ida:AllowedResources:0", ""), ("ida:AllowedResources:1", ""),
-            ("ida:RedirectUri", null));
+        using var config = TestConfig.Create(("ida:RedirectUri", null));
         config.Validate();
-        Assert.Equal(["login.microsoftonline.com"], config.AllowedAuthorityHosts);
-        Assert.Empty(config.AllowedResources);
         Assert.Equal("http://localhost", config.RedirectUri);
     }
 
-    private static IReadOnlyCollection<string> GetAllowlist(AppConfig config, string key) =>
-        key == "ida:AllowedResources" ? config.AllowedResources : config.AllowedAuthorityHosts;
-
-    private static void WriteDefaults(TestDirectory directory, bool includeAllowlists = true)
+    private static void WriteDefaults(TestDirectory directory)
     {
         var defaults = TestConfig.Values()
-            .Where(pair => !pair.Key.StartsWith("AppSettings:ida:Allowed", StringComparison.Ordinal))
             .ToDictionary(pair => pair.Key["AppSettings:".Length..], pair => (object?)pair.Value);
-        if (includeAllowlists)
-        {
-            defaults["ida:AllowedResources"] = new[] { "https://graph.microsoft.com", "https://api.aadrm.com", "https://syncservice.o365syncservice.com" };
-            defaults["ida:AllowedAuthorityHosts"] = new[] { "login.microsoftonline.com", "example.invalid" };
-        }
         File.WriteAllText(directory.File("appsettings.json"), JsonSerializer.Serialize(new { AppSettings = defaults }));
     }
-
-    private static void WriteLocal(TestDirectory directory, string key, object? value) =>
-        File.WriteAllText(directory.File("appsettings.Local.json"),
-            JsonSerializer.Serialize(new { AppSettings = new Dictionary<string, object?> { [key] = value } }));
 }
