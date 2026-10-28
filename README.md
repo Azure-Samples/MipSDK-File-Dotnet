@@ -57,7 +57,6 @@ Register a **public client** application for the intended organizational tenant(
 
 Use delegated permissions appropriate to the operations:
 
-- Microsoft Graph `User.Read` for the existing Graph-based identity bootstrap.
 - Microsoft Information Protection Sync Service `UnifiedPolicy.User.Read` to retrieve the signed-in user's labeling policy.
 - Azure Rights Management Services `user_impersonation` for delegated protection operations.
 
@@ -97,14 +96,14 @@ For example, `MIPSDK_AppSettings__ida__ClientId` overrides `AppSettings:ida:Clie
 | `sdk:GenerateChangeAuditEvent` | Default `false`; successful-change notification only after output verification |
 | `sdk:CachePath` | Default: per-user local application data under `MipSdkFileSample/<client>/<cloud>`; optional absolute/local override |
 
-The sample does not maintain authority-host or resource-audience allowlists. `FileEngineSettings.Cloud` is explicitly set from `sdk:Cloud`, so the SDK discovers the policy/protection services for that cloud. MSAL authority validation remains enabled, and token requests use the configured cloud's MSAL authority with the validated SDK tenant and audience. HTTPS/URI validation, single-tenant pinning, and account binding remain in place. Cloud selection is not an endpoint firewall. Bootstrap mappings are:
+`FileEngineSettings.Cloud` is explicitly set from `sdk:Cloud`, so the SDK discovers the policy/protection services for that cloud. MSAL authority validation remains enabled, and token requests use the configured cloud's MSAL authority with the validated SDK tenant and audience. HTTPS/URI validation, single-tenant pinning, and account binding remain in place. Cloud selection is not an endpoint firewall. MSAL authority mappings are:
 
-| Cloud | Authority host | Graph resource |
-| --- | --- | --- |
-| Commercial / US_GCC | `login.microsoftonline.com` | `https://graph.microsoft.com` |
-| US_GCC_High | `login.microsoftonline.us` | `https://graph.microsoft.us` |
-| US_DoD | `login.microsoftonline.us` | `https://dod-graph.microsoft.us` |
-| China_01 | `login.chinacloudapi.cn` | `https://microsoftgraph.chinacloudapi.cn` |
+| Cloud | Authority host |
+| --- | --- |
+| Commercial / US_GCC | `login.microsoftonline.com` |
+| US_GCC_High | `login.microsoftonline.us` |
+| US_DoD | `login.microsoftonline.us` |
+| China_01 | `login.chinacloudapi.cn` |
 
 MSAL reuses one public client and its in-memory token cache for the session. Requests retain SDK claims and select the intended account, not the first cached account. Tokens are not persisted by this sample, so a new process may prompt again. The SDK uses an encrypted on-disk policy cache. Caches and logs can still contain identity, policy, and file metadata. Keep them private, outside source control, and delete them according to your organization's retention policy. Minimal SDK telemetry is enabled; this does not mean all SDK telemetry/auditing is disabled. No tokens, raw authentication exceptions, or raw SDK server responses are printed by the CLI.
 
@@ -120,7 +119,7 @@ dotnet run --project .\src\mipsdk.csproj --configuration Release --no-build -- -
 dotnet run --project .\src\mipsdk.csproj --configuration Release --no-build
 ```
 
-The interactive application signs in, lists applicable active leaf labels, and prompts for a label GUID, existing input file, and new output path. It preserves the existing explicit downgrade-justification prompt and asks for approved recipient addresses with **Viewer** rights if the SDK requires user-defined permissions. Blank/cancelled input aborts; no recipients or justification are fabricated.
+The interactive application first prompts for the intended organizational account UPN/email and creates the engine with that identity. SDK authentication callbacks request policy/protection tokens directly, using that account as the browser login hint; token results must match the intended account and configured tenant. Enter the account's sign-in UPN, not an email alias. The entered identity is not proof of authentication: validation occurs when a callback obtains a token, and cached policy may avoid a new sign-in. The application then lists applicable active leaf labels and prompts for a label GUID, existing input file, and new output path. It preserves the existing explicit downgrade-justification prompt and asks for approved recipient addresses with **Viewer** rights if the SDK requires user-defined permissions. Blank/cancelled input aborts; no recipients or justification are fabricated.
 
 Exit codes: `0` verified change or genuine no-op; `1` authentication/SDK/I/O/verification failure; `2` invalid configuration, arguments, or input; `3` user cancellation. `--help` and `--native-smoke` require no configured identity. `--check-config` validates locally without authentication.
 
@@ -181,16 +180,17 @@ Live tests are **skipped by default**. Run them only in an approved test tenant,
 
 ```powershell
 $env:MIPSDK_RUN_LIVE = "1"
+$env:MIPSDK_LIVE_USER = "YOUR-ORGANIZATIONAL-ACCOUNT-UPN"
 $env:MIPSDK_LIVE_LABEL_ID = "YOUR-APPROVED-TEST-LABEL-GUID"
 $env:MIPSDK_LIVE_PROTECTED_LABEL_ID = "YOUR-APPROVED-PROTECTED-TEST-LABEL-GUID"
 try {
     dotnet test --project .\tests\mipsdk.Tests\mipsdk.Tests.csproj --configuration Release
 } finally {
-    Remove-Item Env:\MIPSDK_RUN_LIVE, Env:\MIPSDK_LIVE_LABEL_ID, Env:\MIPSDK_LIVE_PROTECTED_LABEL_ID
+    Remove-Item Env:\MIPSDK_RUN_LIVE, Env:\MIPSDK_LIVE_USER, Env:\MIPSDK_LIVE_LABEL_ID, Env:\MIPSDK_LIVE_PROTECTED_LABEL_ID
 }
 ```
 
-Each live case also requires its corresponding label variable. Tests generate disposable valid DOCX content, verify unchanged input, read back label/protection, and repeat labeling while accepting either the SDK's changed or unchanged result. Protected testing requires actual protection read-back, not just a matching label ID. No customer files are relabeled and no tenant settings are changed. Live PDF, sovereign-cloud, DKE, user-defined-permissions, and downgrade-policy scenarios require separate approved manual evidence; passing ordinary live labeling does not prove those modes.
+Each live case also requires the intended account in `MIPSDK_LIVE_USER` and its corresponding label variable. Tests generate disposable valid DOCX content, verify unchanged input, read back label/protection, and repeat labeling while accepting either the SDK's changed or unchanged result. Protected testing requires actual protection read-back, not just a matching label ID. No customer files are relabeled and no tenant settings are changed. Live PDF, sovereign-cloud, DKE, user-defined-permissions, and downgrade-policy scenarios require separate approved manual evidence; passing ordinary live labeling does not prove those modes.
 
 ## Troubleshooting
 

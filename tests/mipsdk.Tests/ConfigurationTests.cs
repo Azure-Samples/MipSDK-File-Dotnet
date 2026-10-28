@@ -50,18 +50,17 @@ public sealed class ConfigurationTests
     }
 
     [Theory]
-    [InlineData("Commercial", "login.microsoftonline.com", "https://graph.microsoft.com")]
-    [InlineData("US_GCC", "login.microsoftonline.com", "https://graph.microsoft.com")]
-    [InlineData("US_GCC_High", "login.microsoftonline.us", "https://graph.microsoft.us")]
-    [InlineData("US_DoD", "login.microsoftonline.us", "https://dod-graph.microsoft.us")]
-    [InlineData("China_01", "login.chinacloudapi.cn", "https://microsoftgraph.chinacloudapi.cn")]
-    public void CloudControlsBootstrapAndEngine(string cloud, string host, string resource)
+    [InlineData("Commercial", "login.microsoftonline.com")]
+    [InlineData("US_GCC", "login.microsoftonline.com")]
+    [InlineData("US_GCC_High", "login.microsoftonline.us")]
+    [InlineData("US_DoD", "login.microsoftonline.us")]
+    [InlineData("China_01", "login.chinacloudapi.cn")]
+    public void CloudControlsBootstrapAndEngine(string cloud, string host)
     {
         using var config = TestConfig.Create(("sdk:Cloud", cloud),
             ("ida:IsMultiTenantApp", "true"), ("ida:TenantGuid", ""));
         config.Validate();
         Assert.Equal(host, config.AuthorityHost);
-        Assert.Equal(resource, config.IdentityResource);
         Assert.EndsWith("/organizations", config.BootstrapAuthority);
         var identity = new Identity("synthetic-user@example.invalid");
         var engine = SdkAction.CreateEngineSettings(config, identity, Mock.Of<IAuthDelegate>());

@@ -5,19 +5,34 @@ public sealed class AuthDelegateImpl : IAuthDelegate, IDisposable
 {
     private readonly AppConfig config;
     private readonly IPublicClientApplication application;
+    private readonly string intendedUser;
     private readonly SemaphoreSlim acquisition = new(1, 1);
     private string? accountId;
     private bool disposed;
 
-    public AuthDelegateImpl(AppConfig config) : this(config, CreateApplication(config))
+    public AuthDelegateImpl(AppConfig config, string userPrincipalName)
+        : this(config, CreateApplication(config), userPrincipalName)
     {
     }
 
-    internal AuthDelegateImpl(AppConfig config, IPublicClientApplication application)
+    internal AuthDelegateImpl(AppConfig config, IPublicClientApplication application, string userPrincipalName)
     {
         config.Validate();
         this.config = config;
         this.application = application;
+        intendedUser = ValidateUserPrincipalName(userPrincipalName);
+    }
+
+    internal static string ValidateUserPrincipalName(string userPrincipalName)
+    {
+        var value = userPrincipalName?.Trim();
+        if (string.IsNullOrWhiteSpace(value)
+            || !System.Net.Mail.MailAddress.TryCreate(value, out var address)
+            || address.Address != value || !value.Contains('@'))
+        {
+            throw new InputValidationException("Enter an organizational account UPN/email without a display name.");
+        }
+        return value;
     }
 
     private static IPublicClientApplication CreateApplication(AppConfig config)
@@ -39,6 +54,11 @@ public sealed class AuthDelegateImpl : IAuthDelegate, IDisposable
         string authority, string resource, string? claims, string? expectedUser = null)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
+        if (!string.IsNullOrEmpty(expectedUser)
+            && !intendedUser.Equals(expectedUser, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("The SDK identity does not match the intended organizational account.");
+        }
         var validatedAuthority = ValidateAuthority(authority);
         var tenant = new Uri(validatedAuthority).AbsolutePath.Trim('/');
         var scopes = new[] { BuildDefaultScope(resource) };
@@ -46,7 +66,7 @@ public sealed class AuthDelegateImpl : IAuthDelegate, IDisposable
         try
         {
             var account = SelectAccount(await application.GetAccountsAsync().ConfigureAwait(false),
-                accountId, expectedUser);
+                accountId, intendedUser);
             AuthenticationResult result;
             try
             {
@@ -59,12 +79,12 @@ public sealed class AuthDelegateImpl : IAuthDelegate, IDisposable
             {
                 result = await application.AcquireTokenInteractive(scopes)
                     .WithTenantId(tenant)
-                    .WithLoginHint(expectedUser ?? account?.Username)
+                    .WithLoginHint(intendedUser)
                     .WithClaims(claims)
                     .ExecuteAsync().ConfigureAwait(false);
             }
 
-            ValidateResult(result, expectedUser);
+            ValidateResult(result);
             accountId = result.Account.HomeAccountId.Identifier;
             return result;
         }
@@ -140,25 +160,17 @@ public sealed class AuthDelegateImpl : IAuthDelegate, IDisposable
             account => account.Username.Equals(expectedUser, StringComparison.OrdinalIgnoreCase));
     }
 
-    private void ValidateResult(AuthenticationResult result, string? expectedUser)
+    private void ValidateResult(AuthenticationResult result)
     {
         if (result.Account == null || string.IsNullOrWhiteSpace(result.Account.Username)
             || result.Account.HomeAccountId == null
             || (accountId != null && accountId != result.Account.HomeAccountId.Identifier)
-            || (!string.IsNullOrEmpty(expectedUser)
-                && !expectedUser.Equals(result.Account.Username, StringComparison.OrdinalIgnoreCase))
+            || !intendedUser.Equals(result.Account.Username, StringComparison.OrdinalIgnoreCase)
             || (!config.IsMultiTenant
                 && !config.TenantId.Equals(result.TenantId, StringComparison.OrdinalIgnoreCase)))
         {
             throw new InvalidOperationException("Sign-in returned a different user or tenant. Sign in with the intended organizational account.");
         }
-    }
-
-    public async Task<Identity> GetUserIdentityAsync()
-    {
-        var result = await AcquireTokenAsync(config.BootstrapAuthority, config.IdentityResource, null)
-            .ConfigureAwait(false);
-        return new Identity(result.Account.Username);
     }
 
     public void Dispose()

@@ -1,11 +1,12 @@
 # Changelog
 
-## Unreleased - 2026-10-23
+## 2026-10-27
 
 ### Changed
 
 - Target .NET 10 LTS with MIP File SDK 1.18.148, MSAL 4.91.1, and Configuration 10.0.13.
 - Retain delegated browser authentication, SDK claims, and explicit interactive justification.
+- Prompt for the intended organizational account before engine creation and let SDK callbacks acquire policy/protection tokens directly. Remove the Graph identity bootstrap and its permission requirement; retain account/tenant validation. Live tests now also require `MIPSDK_LIVE_USER`.
 - Add explicit cloud selection, tenant/account binding, per-session MSAL cache reuse, and ignored local/environment configuration.
 - Replace finalizer-based SDK cleanup with deterministic disposal and reuse one SDK session for write/read-back.
 - Stage output without overwrite, verify label and required protection, and report no-op/failure/success accurately.
@@ -19,6 +20,7 @@
 - Local Windows/Ubuntu build, advisory, coverage, and publish-smoke instructions; pinned CodeQL scanning and Dependabot without tenant credentials.
 - Explicit Ubuntu managed/native asset integration and contract tests for the packages' legacy folder layout.
 - Public-sample ignore rules and documentation for configuration, permissions, file guarantees, tests, and troubleshooting.
+- Repository Copilot instructions covering local validation, native dependencies, architecture, and public-sample hygiene.
 
 ### Fixed
 

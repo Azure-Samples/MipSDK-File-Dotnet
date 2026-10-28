@@ -16,7 +16,7 @@ public sealed class AuthenticationTests
     public void SingleTenantChallengesStayPinned(string tenant)
     {
         using var config = TestConfig.Create();
-        using var auth = new AuthDelegateImpl(config);
+        using var auth = new AuthDelegateImpl(config, SyntheticIdentityService.Username);
         Assert.Equal($"https://login.microsoftonline.com/{TestConfig.Tenant}",
             auth.ValidateAuthority($"https://login.microsoftonline.com/{tenant}/"));
     }
@@ -34,7 +34,7 @@ public sealed class AuthenticationTests
     public void InvalidOrCrossTenantAuthoritiesAreRejected(string authority)
     {
         using var config = TestConfig.Create();
-        using var auth = new AuthDelegateImpl(config);
+        using var auth = new AuthDelegateImpl(config, SyntheticIdentityService.Username);
         var error = Assert.Throws<InputValidationException>(() => auth.ValidateAuthority(authority));
         Assert.DoesNotContain("synthetic", error.Message);
     }
@@ -45,7 +45,7 @@ public sealed class AuthenticationTests
     public void SdkAuthorityAliasRetainsSingleTenantBinding(string tenant)
     {
         using var config = TestConfig.Create();
-        using var auth = new AuthDelegateImpl(config);
+        using var auth = new AuthDelegateImpl(config, SyntheticIdentityService.Username);
         Assert.Equal($"https://login.windows.net/{TestConfig.Tenant}",
             auth.ValidateAuthority($"https://login.windows.net/{tenant}"));
     }
@@ -54,33 +54,33 @@ public sealed class AuthenticationTests
     public void MultiTenantChallengesRetainOrganizationalTenant()
     {
         using var config = TestConfig.Create(("ida:IsMultiTenantApp", "true"));
-        using var auth = new AuthDelegateImpl(config);
+        using var auth = new AuthDelegateImpl(config, SyntheticIdentityService.Username);
         Assert.Equal($"https://login.microsoftonline.com/{TestConfig.OtherTenant}",
             auth.ValidateAuthority($"https://login.microsoftonline.com/{TestConfig.OtherTenant}"));
     }
 
     [Theory]
-    [InlineData("https://graph.microsoft.com", "https://graph.microsoft.com/.default")]
-    [InlineData("https://graph.microsoft.com/", "https://graph.microsoft.com/.default")]
-    [InlineData("https://GRAPH.microsoft.com/", "https://graph.microsoft.com/.default")]
+    [InlineData("https://api.aadrm.com", "https://api.aadrm.com/.default")]
+    [InlineData("https://api.aadrm.com/", "https://api.aadrm.com/.default")]
+    [InlineData("https://API.aadrm.com/", "https://api.aadrm.com/.default")]
     [InlineData("https://psor.o365syncservice.com", "https://psor.o365syncservice.com/.default")]
     public void ResourcesNormalizeToOneDefaultScope(string resource, string scope)
     {
         using var config = TestConfig.Create();
-        using var auth = new AuthDelegateImpl(config);
+        using var auth = new AuthDelegateImpl(config, SyntheticIdentityService.Username);
         Assert.Equal(scope, auth.BuildDefaultScope(resource));
     }
 
     [Theory]
-    [InlineData("http://graph.microsoft.com")]
-    [InlineData("https://graph.microsoft.com/#fragment")]
-    [InlineData("https://graph.microsoft.com?query=true")]
-    [InlineData("https://graph.microsoft.com/.default")]
+    [InlineData("http://api.aadrm.com")]
+    [InlineData("https://api.aadrm.com/#fragment")]
+    [InlineData("https://api.aadrm.com?query=true")]
+    [InlineData("https://api.aadrm.com/.default")]
     [InlineData("relative")]
     public void InvalidResourcesAreRejected(string resource)
     {
         using var config = TestConfig.Create();
-        using var auth = new AuthDelegateImpl(config);
+        using var auth = new AuthDelegateImpl(config, SyntheticIdentityService.Username);
         Assert.Throws<InputValidationException>(() => auth.BuildDefaultScope(resource));
     }
 
@@ -88,7 +88,7 @@ public sealed class AuthenticationTests
     public void SdkHttpsAudienceDoesNotRequireSampleConfiguration()
     {
         using var config = TestConfig.Create();
-        using var auth = new AuthDelegateImpl(config);
+        using var auth = new AuthDelegateImpl(config, SyntheticIdentityService.Username);
         Assert.Equal("https://example.invalid/resource/.default", auth.BuildDefaultScope("https://example.invalid/resource/"));
     }
 
@@ -114,8 +114,10 @@ public sealed class AuthenticationTests
         return account.Object;
     }
 
-    [Fact]
-    public async Task RealMsalReusesItsClientAndCacheAndForwardsClaimsWithoutNetwork()
+    [Theory]
+    [InlineData(SyntheticIdentityService.Username)]
+    [InlineData(" SYNTHETIC-USER@EXAMPLE.INVALID ")]
+    public async Task RealMsalReusesItsClientAndCacheAndForwardsClaimsWithoutNetwork(string userPrincipalName)
     {
         using var config = TestConfig.Create();
         using var service = new SyntheticIdentityService();
@@ -130,17 +132,23 @@ public sealed class AuthenticationTests
             .Returns((IEnumerable<string> scopes, IAccount account) => real.AcquireTokenSilent(scopes, account));
         client.Setup(value => value.AcquireTokenInteractive(It.IsAny<IEnumerable<string>>()))
             .Returns((IEnumerable<string> scopes) => real.AcquireTokenInteractive(scopes).WithCustomWebUi(service));
-        using var auth = new AuthDelegateImpl(config, client.Object);
-        var identity = await auth.GetUserIdentityAsync();
-        Assert.Equal(SyntheticIdentityService.Username, identity.Email);
+        using var auth = new AuthDelegateImpl(config, client.Object, userPrincipalName);
+        Assert.Empty(service.TokenRequests);
+        var identity = new Microsoft.InformationProtection.Identity(SyntheticIdentityService.Username);
+        var policy = auth.AcquireToken(identity, "https://login.windows.net/common",
+            "https://psor.o365syncservice.com", "");
+        Assert.Equal("synthetic-access-token", policy);
+        Assert.Equal(userPrincipalName.Trim(), service.LoginHints.Single());
         Assert.Single(service.TokenRequests);
-        var cached = await auth.AcquireTokenAsync(config.BootstrapAuthority, config.IdentityResource, null, identity.Email);
+        var cached = await auth.AcquireTokenAsync(config.BootstrapAuthority, "https://psor.o365syncservice.com", null);
         Assert.Equal("synthetic-access-token", cached.AccessToken);
         Assert.Single(service.TokenRequests);
         const string claims = """{"access_token":{"synthetic_claim":{"essential":true}}}""";
         var rms = auth.AcquireToken(identity, "https://login.windows.net/common", "https://api.aadrm.com", claims);
         Assert.Equal("synthetic-access-token", rms);
         Assert.Equal(2, service.TokenRequests.Count);
+        Assert.Contains(Uri.EscapeDataString("https://psor.o365syncservice.com/.default"), service.TokenRequests[0].Body);
+        Assert.Contains(Uri.EscapeDataString("https://api.aadrm.com/.default"), service.TokenRequests[1].Body);
         Assert.Contains(Uri.EscapeDataString(claims), service.TokenRequests[1].Body);
         Assert.All(service.TokenRequests, request => Assert.Contains(TestConfig.Tenant, request.Uri.AbsolutePath));
         Assert.All(service.TokenRequests, request => Assert.Equal("login.microsoftonline.com", request.Uri.Host));
@@ -162,20 +170,45 @@ public sealed class AuthenticationTests
             .Returns((IEnumerable<string> scopes, IAccount account) => real.AcquireTokenSilent(scopes, account));
         client.Setup(value => value.AcquireTokenInteractive(It.IsAny<IEnumerable<string>>()))
             .Returns((IEnumerable<string> scopes) => real.AcquireTokenInteractive(scopes).WithCustomWebUi(service));
-        using var auth = new AuthDelegateImpl(config, client.Object);
+        using var auth = new AuthDelegateImpl(config, client.Object, SyntheticIdentityService.Username);
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            auth.AcquireTokenAsync(config.BootstrapAuthority, config.IdentityResource, null, SyntheticIdentityService.Username));
+            auth.AcquireTokenAsync(config.BootstrapAuthority, "https://psor.o365syncservice.com", null));
+    }
+
+    [Fact]
+    public void SdkCallbackCannotSwitchTheIntendedAccount()
+    {
+        using var config = TestConfig.Create();
+        var client = new Mock<IPublicClientApplication>(MockBehavior.Strict);
+        using var auth = new AuthDelegateImpl(config, client.Object, SyntheticIdentityService.Username);
+        Assert.Throws<InvalidOperationException>(() => auth.AcquireToken(
+            new Microsoft.InformationProtection.Identity("different-user@example.invalid"),
+            config.BootstrapAuthority, "https://api.aadrm.com", ""));
+        client.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("not-an-account")]
+    [InlineData("Synthetic User <synthetic-user@example.invalid>")]
+    public async Task InvalidAccountIsRejectedBeforeEngineCreation(string? userPrincipalName)
+    {
+        using var config = TestConfig.Create();
+        await Assert.ThrowsAsync<InputValidationException>(() =>
+            mipsdk.Action.CreateAsync(config, userPrincipalName!));
     }
 
     [Fact]
     public async Task DisposedAuthenticationRejectsTokenAcquisition()
     {
         using var config = TestConfig.Create();
-        var auth = new AuthDelegateImpl(config);
+        var auth = new AuthDelegateImpl(config, SyntheticIdentityService.Username);
         auth.Dispose();
         auth.Dispose();
         await Assert.ThrowsAsync<ObjectDisposedException>(() => auth.AcquireTokenAsync(
-            config.BootstrapAuthority, config.IdentityResource, null));
+            config.BootstrapAuthority, "https://api.aadrm.com", null));
     }
 }
 
@@ -186,12 +219,16 @@ internal sealed class SyntheticIdentityService : HttpMessageHandler, IMsalHttpCl
     public string UsernameToReturn { get; init; } = Username;
     public string TenantToReturn { get; init; } = TestConfig.Tenant;
     public List<(Uri Uri, string Body)> TokenRequests { get; } = [];
+    public List<string> LoginHints { get; } = [];
 
     public SyntheticIdentityService() => client = new HttpClient(this, disposeHandler: false);
     public HttpClient GetHttpClient() => client;
 
     public Task<Uri> AcquireAuthorizationCodeAsync(Uri authorizationUri, Uri redirectUri, CancellationToken cancellationToken)
     {
+        var hint = authorizationUri.Query.TrimStart('?').Split('&')
+            .Select(value => value.Split('=', 2)).Single(pair => pair[0] == "login_hint")[1];
+        LoginHints.Add(Uri.UnescapeDataString(hint));
         var state = authorizationUri.Query.TrimStart('?').Split('&')
             .Select(value => value.Split('=', 2)).Single(pair => pair[0] == "state")[1];
         return Task.FromResult(new Uri($"{redirectUri}?code=synthetic-code&state={state}"));
@@ -230,7 +267,7 @@ internal sealed class SyntheticIdentityService : HttpMessageHandler, IMsalHttpCl
             {
                 token_type = "Bearer", access_token = "synthetic-access-token", expires_in = 3600,
                 refresh_token = "synthetic-refresh-token",
-                scope = body.Contains("api.aadrm.com") ? "https://api.aadrm.com/.default" : "https://graph.microsoft.com/.default",
+                scope = body.Contains("api.aadrm.com") ? "https://api.aadrm.com/.default" : "https://psor.o365syncservice.com/.default",
                 id_token = $"{Encode(new { alg = "none", typ = "JWT" })}.{payload}.synthetic",
                 client_info = Encode(new { uid = TestConfig.Client, utid = TenantToReturn })
             });
