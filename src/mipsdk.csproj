@@ -2,15 +2,42 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+    <Platform>x64</Platform>
+    <MipSdkPackage Condition="'$(MipSdkPackage)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">Microsoft.InformationProtection.File</MipSdkPackage>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="3.1.9" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.FileExtensions" Version="3.1.9" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="3.1.9" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="3.1.9" />
-    <PackageReference Include="microsoft.identity.client" Version="4.18.0" />     
-    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />       
-  </ItemGroup> 
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.91.1" />
+    <PackageReference Include="$(MipSdkPackage)" Version="$(MipSdkVersion)"
+                      Condition="$([MSBuild]::IsOSPlatform('Windows')) and '$(MipSdkPackage)' != ''" />
+    <PackageReference Include="$(MipSdkPackage)" Version="$(MipSdkVersion)"
+                      ExcludeAssets="all" PrivateAssets="all" NoWarn="NU1701"
+                      Condition="$([MSBuild]::IsOSPlatform('Linux')) and '$(MipSdkPackage)' != ''" />
+    <InternalsVisibleTo Include="mipsdk.Tests" />
+    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="appsettings.Local.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
+  <Target Name="ValidateMipPlatform" BeforeTargets="CollectPackageReferences;PrepareForBuild">
+    <Error Condition="'$(PlatformTarget)' != 'x64'"
+           Text="The sample requires an x64 process; do not override PlatformTarget." />
+    <Error Condition="!$([MSBuild]::IsOSPlatform('Windows')) and !$([MSBuild]::IsOSPlatform('Linux'))"
+           Text="This sample supports Windows x64 and Ubuntu 22.04/24.04 x64 only." />
+    <Error Condition="$([MSBuild]::IsOSPlatform('Windows')) and '$(MipSdkPackage)' != 'Microsoft.InformationProtection.File'"
+           Text="Windows builds require Microsoft.InformationProtection.File." />
+    <Error Condition="$([MSBuild]::IsOSPlatform('Linux')) and '$(MipSdkPackage)' != 'Microsoft.InformationProtection.File.Ubuntu2204' and '$(MipSdkPackage)' != 'Microsoft.InformationProtection.File.Ubuntu2404'"
+           Text="Select the package matching your Ubuntu host with -p:MipSdkPackage=Microsoft.InformationProtection.File.Ubuntu2204 or Microsoft.InformationProtection.File.Ubuntu2404." />
+    <Error Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'win-x64' and '$(RuntimeIdentifier)' != 'linux-x64'"
+           Text="Only win-x64 and linux-x64 publishing is supported." />
+    <Error Condition="($([MSBuild]::IsOSPlatform('Windows')) and '$(RuntimeIdentifier)' == 'linux-x64') or ($([MSBuild]::IsOSPlatform('Linux')) and '$(RuntimeIdentifier)' == 'win-x64')"
+           Text="Publish on the target native operating system; cross-OS publishing is not supported." />
+    <Error Condition="'$(PublishSingleFile)' == 'true' or '$(PublishTrimmed)' == 'true' or '$(PublishAot)' == 'true'"
+           Text="Single-file publishing, trimming, and Native AOT are not supported by this native SDK sample." />
+  </Target>
 </Project>

@@ -10,3 +10,21 @@
 
 # Built Visual Studio Code Extensions
 *.vsix
+
+# Build and test output
+**/bin/
+**/obj/
+artifacts/
+TestResults/
+**/TestResults/
+coverage*.json
+coverage*.xml
+
+# Local configuration, SDK state, and credentials
+**/appsettings.Local.json
+**/mip_data/
+*.log
+*.pfx
+*.p12
+*.key
+.env
