@@ -1,4 +1,15 @@
-# Contributing to [project-title]
+# Contributing to the MIP File SDK .NET sample
+
+Use a stable .NET 10 SDK and a supported native x64 host. Before proposing changes, run the
+[credential-free validation commands in the README](README.md#credential-free-validation), including
+the 80% managed branch-coverage gate and published native smoke check. On Ubuntu, select the
+matching native package on every project command. Do not lower coverage gates or substitute
+dependency advisories for source scanning.
+
+Live tests are opt-in and require approved test-tenant labels. Never include real tenant/application/label
+identifiers, tokens, credentials, local settings, private keys, SDK caches/logs, test content, or build output
+in a contribution. Review the complete diff and any outgoing commits before publishing. Keep unrelated
+editor and agent configuration out of changes.
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
 Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
@@ -51,12 +62,12 @@ chances of your issue being dealt with quickly:
 * **Suggest a Fix** - if you can't fix the bug yourself, perhaps you can point to what might be
   causing the problem (line of code or commit)
 
-You can file new issues by providing the above information at the corresponding repository's issues link: https://github.com/[organization-name]/[repository-name]/issues/new].
+You can file new issues at https://github.com/Azure-Samples/MipSDK-File-Dotnet/issues/new.
 
 ### <a name="submit-pr"></a> Submitting a Pull Request (PR)
 Before you submit your Pull Request (PR) consider the following guidelines:
 
-* Search the repository (https://github.com/[organization-name]/[repository-name]/pulls) for an open or closed PR
+* Search the repository (https://github.com/Azure-Samples/MipSDK-File-Dotnet/pulls) for an open or closed PR
   that relates to your submission. You don't want to duplicate effort.
 
 * Make your changes in a new git fork:
@@ -66,11 +77,6 @@ Before you submit your Pull Request (PR) consider the following guidelines:
 * In GitHub, create a pull request
 * If we suggest changes then:
   * Make the required updates.
-  * Rebase your fork and force push to your GitHub repository (this will update your Pull Request):
-
-    ```shell
-    git rebase master -i
-    git push -f
-    ```
+  * Push a follow-up commit to your fork to update the pull request.
 
 That's it! Thank you for your contribution!

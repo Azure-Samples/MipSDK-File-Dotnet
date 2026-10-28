@@ -25,28 +25,20 @@
 *
 */
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.InformationProtection.File;
-using Microsoft.InformationProtection.Exceptions;
 using Microsoft.InformationProtection;
+using Microsoft.InformationProtection.File;
 using Microsoft.InformationProtection.Protection;
-using System.Runtime.InteropServices;
-using Microsoft.InformationProtection.Policy;
+
 namespace mipsdk
 {
-    public class Action
+    public sealed class Action : IDisposable
     {
-        private AuthDelegateImpl authDelegate;
-        private ApplicationInfo appInfo;
-        private IFileProfile profile;
-        private IFileEngine engine;
-        private MipContext mipContext;
+        private readonly IFileEngine engine;
+        private readonly IFileProfile? profile;
+        private readonly IDisposable? mipContext;
+        private readonly IDisposable? authentication;
+        private bool disposed;
 
-        // Used to pass in options for labeling the file.
         public struct FileOptions
         {
             public string FileName;
@@ -54,253 +46,272 @@ namespace mipsdk
             public string LabelId;
             public DataState DataState;
             public AssignmentMethod AssignmentMethod;
-            public ActionSource ActionSource;
             public bool IsAuditDiscoveryEnabled;
             public bool GenerateChangeAuditEvent;
+            public string? Justification;
+            public IReadOnlyCollection<string>? AdhocRecipients;
         }
 
         public struct ProtectionDetails
         {
-            public List<UserRoles> UserRoles;
-            public List<UserRights> UserRights;
-            public string TemplateId;
+            public List<UserRoles>? UserRoles;
+            public List<UserRights>? UserRights;
+            public string? TemplateId;
             public bool IsProtected;
         }
 
+        public sealed record LabelingResult(bool Changed, string? OutputPath, string LabelId, bool IsProtected);
 
-        /// <summary>
-        /// Constructor for Action class. Pass in AppInfo to simplify passing settings to AuthDelegate.
-        /// </summary>
-        /// <param name="appInfo"></param>
-        public Action(ApplicationInfo appInfo)
+        internal Action(IFileEngine engine, IFileProfile? profile = null,
+            IDisposable? mipContext = null, IDisposable? authentication = null)
         {
-            this.appInfo = appInfo;
-
-            // Initialize AuthDelegateImplementation using AppInfo. 
-            authDelegate = new AuthDelegateImpl(this.appInfo);
-
-            // Create MipConfiguration Object
-            MipConfiguration mipConfiguration = new MipConfiguration(appInfo, "mip_data", LogLevel.Trace, false);
-            
-            // Create MipContext using Configuration
-            mipContext = MIP.CreateMipContext(mipConfiguration);
-
-            // Initialize SDK DLLs. If DLLs are missing or wrong type, this will throw an exception
-            MIP.Initialize(MipComponent.File);
-
-            // This method in AuthDelegateImplementation triggers auth against Graph so that we can get the user ID.
-            var id = authDelegate.GetUserIdentity();
-
-            // Create profile.
-            profile = CreateFileProfile(appInfo);
-
-            // Create engine providing Identity from authDelegate to assist with service discovery.
-            engine = CreateFileEngine(id);
+            this.engine = engine;
+            this.profile = profile;
+            this.mipContext = mipContext;
+            this.authentication = authentication;
         }
 
-        /// <summary>
-        /// Null refs to engine and profile and release all MIP resources.
-        /// </summary>
-        ~Action()
+        public static async Task<Action> CreateAsync(AppConfig config)
         {
-            engine = null;
-            profile = null;
-            mipContext.Dispose();
-            mipContext = null;
-        }
-
-        /// <summary>
-        /// Creates an IFileProfile and returns.
-        /// IFileProfile is the root of all MIP SDK File API operations. Typically only one should be created per app.
-        /// </summary>
-        /// <param name="appInfo"></param>
-        /// <param name="authDelegate"></param>
-        /// <returns></returns>
-        private IFileProfile CreateFileProfile(ApplicationInfo appInfo)
-        {                      
-            // Initialize file profile settings to create/use local state.                
-            var profileSettings = new FileProfileSettings(mipContext,
-                    CacheStorageType.OnDiskEncrypted,
-                    new ConsentDelegateImpl());
-
-            // Use MIP.LoadFileProfileAsync() providing settings to create IFileProfile. 
-            // IFileProfile is the root of all SDK operations for a given application.
-            var profile = Task.Run(async () => await MIP.LoadFileProfileAsync(profileSettings)).Result;
-            return profile;
-        }
-
-        /// <summary>
-        /// Creates a file engine, associating the engine with the specified identity. 
-        /// File engines are generally created per-user in an application. 
-        /// IFileEngine implements all operations for fetching labels and sensitivity types.
-        /// IFileHandlers are added to engines to perform labeling operations.
-        /// </summary>
-        /// <param name="identity"></param>
-        /// <returns></returns>
-        private IFileEngine CreateFileEngine(Identity identity)
-        {
-
-            // If the profile hasn't been created, do that first. 
-            if (profile == null)
-            {
-                profile = CreateFileProfile(appInfo);
-            }
-
-            var configuredFunctions = new Dictionary<FunctionalityFilterType, bool>();
-            configuredFunctions.Add(FunctionalityFilterType.DoubleKeyProtection, true);
-
-
-            // Create file settings object. Passing in empty string for the first parameter, engine ID, will cause the SDK to generate a GUID.
-            // Locale settings are supported and should be provided based on the machine locale, particular for client applications.
-            // In this sample, the first parameter is a string containing the user email. This will be used as the unique identifier
-            // for the engine, used to reload the same engine across sessions. 
-            var engineSettings = new FileEngineSettings(identity.Email, authDelegate, "", "en-US")
-            {
-                // Provide the identity for service discovery.
-                Identity = identity,
-                ConfiguredFunctionality = configuredFunctions
-            };
-
-            // Add the IFileEngine to the profile and return.
-            var engine = Task.Run(async () => await profile.AddEngineAsync(engineSettings)).Result;
-
-            return engine;
-        }
-
-
-        /// <summary>
-        /// Method creates a file handler and returns to the caller. 
-        /// IFileHandler implements all labeling and protection operations in the File API.        
-        /// </summary>
-        /// <param name="options">Struct provided to set various options for the handler.</param>
-        /// <returns></returns>
-        private IFileHandler CreateFileHandler(FileOptions options)
-        {
-            // Create the handler using options from FileOptions. Assumes that the engine was previously created and stored in private engine object.
-            // There's probably a better way to pass/store the engine, but this is a sample ;)
-            var handler = Task.Run(async () => await engine.CreateFileHandlerAsync(options.FileName, options.FileName, options.IsAuditDiscoveryEnabled)).Result;
-            return handler;
-        }
-
-
-        /// <summary>
-        /// List all labels from the engine and return in IEnumerable<Label>
-        /// </summary>
-        /// <returns></returns>
-        public IEnumerable<Label> ListLabels()
-        {
-            // Get labels from the engine and return.
-            // For a user principal, these will be user specific.
-            // For a service principal, these may be service specific or global.
-            return engine.SensitivityLabels;
-        }
-
-        /// <summary>
-        /// Set the label on the given file. 
-        /// Options for the labeling operation are provided in the FileOptions parameter.
-        /// </summary>
-        /// <param name="options">Details about file input, output, label to apply, etc.</param>
-        /// <returns></returns>
-        public bool SetLabel(FileOptions options)
-        {
-
-            // LabelingOptions allows us to set the metadata associated with the labeling operations.
-            // Review the API Spec at https://aka.ms/mipsdkdocs for details
-            LabelingOptions labelingOptions = new LabelingOptions()
-            {
-                AssignmentMethod = options.AssignmentMethod
-            };
-
-            var handler = CreateFileHandler(options);
-
-            // Use the SetLabel method on the handler, providing label ID and LabelingOptions
-            // The handler already references a file, so those details aren't needed.
-
+            config.Validate();
+            InitializeNative();
+            var auth = new AuthDelegateImpl(config);
+            MipContext? context = null;
+            IFileProfile? profile = null;
             try
             {
-                handler.SetLabel(engine.GetLabelById(options.LabelId), labelingOptions, new ProtectionSettings());
+                var identity = await auth.GetUserIdentityAsync().ConfigureAwait(false);
+                context = MIP.CreateMipContext(CreateMipConfiguration(config));
+                profile = await MIP.LoadFileProfileAsync(new FileProfileSettings(
+                    context, CacheStorageType.OnDiskEncrypted, new ConsentDelegateImpl(config.ServiceConsent)))
+                    .ConfigureAwait(false);
+                var engine = await profile.AddEngineAsync(CreateEngineSettings(config, identity, auth))
+                    .ConfigureAwait(false);
+                return new Action(engine, profile, context, auth);
             }
-
-            catch (Microsoft.InformationProtection.Exceptions.JustificationRequiredException)
+            catch
             {
-                Console.Write("Please provide justification: ");
-                string justification = Console.ReadLine();
-
-                labelingOptions.IsDowngradeJustified = true;
-                labelingOptions.JustificationMessage = justification;
-
-                handler.SetLabel(engine.GetLabelById(options.LabelId), labelingOptions, new ProtectionSettings());
+                CleanupFailedInitialization(profile, context, auth);
+                throw;
             }
+        }
 
-            catch (Microsoft.InformationProtection.Exceptions.AdhocProtectionRequiredException)
+        public static void InitializeNative() => MIP.Initialize(MipComponent.File);
+
+        internal static MipConfiguration CreateMipConfiguration(AppConfig config) =>
+            new(config.CreateApplicationInfo(), config.CachePath, config.LogLevel, false, CacheStorageType.OnDiskEncrypted)
             {
-                List<string> users = new List<string>()
+                DiagnosticOverride = new DiagnosticConfiguration
                 {
-                    "user1@contoso.com",
-                    "user2@contoso.com"                    
-                };
+                    Cloud = config.Cloud,
+                    IsMinimalTelemetryEnabled = true,
+                    IsLocalCachingEnabled = config.EnableDiagnosticLogging,
+                    IsTraceLoggingEnabled = config.EnableDiagnosticLogging
+                }
+            };
 
-                List<string> roles = new List<string>()
-                {
-                    Microsoft.InformationProtection.Protection.Roles.Viewer
-                };
-
-                List<UserRoles> userroles = new List<UserRoles>()
-                {
-                    new UserRoles(users, roles)
-                };
-
-                ProtectionDescriptor protectionDescriptor = new ProtectionDescriptor(userroles);
-                
-                handler.SetProtection(protectionDescriptor, new ProtectionSettings());
-                handler.SetLabel(engine.GetLabelById(options.LabelId), labelingOptions, new ProtectionSettings());
-            }
-
-
-            // The change isn't committed to the file referenced by the handler until CommitAsync() is called.
-            // Pass the desired output file name in to the CommitAsync() function.
-            bool result = false;
-            
-            // Only call commit if the handler has been modified.
-            if(handler.IsModified())
+        internal static FileEngineSettings CreateEngineSettings(AppConfig config, Identity identity, IAuthDelegate auth) =>
+            new(identity.Email, auth, "", "en-US")
             {
-                result = Task.Run(async () => await handler.CommitAsync(options.OutputName)).Result;
-            }
+                Identity = identity,
+                Cloud = config.Cloud,
+                ConfiguredFunctionality = new Dictionary<FunctionalityFilterType, bool>
+                {
+                    [FunctionalityFilterType.DoubleKeyProtection] = true
+                }
+            };
 
-            // If the commit was successful and GenerateChangeAuditEvents is true, call NotifyCommitSuccessful()
-            if (result && options.GenerateChangeAuditEvent)
+        public IEnumerable<Label> ListLabels()
+        {
+            ThrowIfDisposed();
+            return Flatten(engine.SensitivityLabels).Where(IsApplicable).ToArray();
+        }
+
+        private static IEnumerable<Label> Flatten(IEnumerable<Label> labels)
+        {
+            foreach (var label in labels)
             {
-                // Submits and audit event about the labeling action to Azure Information Protection Analytics 
-                handler.NotifyCommitSuccessful(options.FileName);
+                yield return label;
+                foreach (var child in Flatten(label.Children ?? []))
+                {
+                    yield return child;
+                }
+            }
+        }
+
+        internal static bool IsApplicable(Label label) =>
+            label.IsActive && (label.Children == null || label.Children.Count == 0)
+            && (label.ContentFormats == null || label.ContentFormats.Length == 0
+                || label.ContentFormats.Contains("file", StringComparer.OrdinalIgnoreCase));
+
+        public bool SetLabel(FileOptions options) => SetLabelAsync(options).GetAwaiter().GetResult().Changed;
+
+        public async Task<LabelingResult> SetLabelAsync(FileOptions options)
+        {
+            ThrowIfDisposed();
+            var (input, output) = SafeOutput.ValidatePaths(options.FileName, options.OutputName);
+            if (!Guid.TryParse(options.LabelId, out var id) || id == Guid.Empty)
+            {
+                throw new InputValidationException("Enter a valid label GUID.");
+            }
+            var label = engine.GetLabelById(options.LabelId);
+            if (label == null || !IsApplicable(label))
+            {
+                throw new InputValidationException("Select an active leaf label applicable to files.");
+            }
+            if (options.Justification != null && string.IsNullOrWhiteSpace(options.Justification))
+            {
+                throw new InputValidationException("Downgrade justification cannot be blank.");
             }
 
+            using var source = OpenRead(input);
+            using var handler = await CreateHandlerAsync(source, input, options.IsAuditDiscoveryEnabled).ConfigureAwait(false);
+            if (options.AdhocRecipients != null)
+            {
+                if (!label.HasAdhocProtection)
+                {
+                    throw new InputValidationException("Recipients can only be supplied for a user-defined-permissions label.");
+                }
+                var recipients = ValidateRecipients(options.AdhocRecipients);
+                handler.SetProtection(new ProtectionDescriptor(
+                    [new UserRoles(recipients, [Roles.Viewer])]), new ProtectionSettings());
+            }
+
+            handler.SetLabel(label, new LabelingOptions
+            {
+                AssignmentMethod = options.AssignmentMethod,
+                IsDowngradeJustified = options.Justification != null,
+                JustificationMessage = options.Justification
+            }, new ProtectionSettings());
+
+            if (!handler.IsModified())
+            {
+                return new LabelingResult(false, null, label.Id, VerifyHandler(handler, label));
+            }
+
+            var extension = Path.GetExtension(handler.OutputFileName);
+            if (string.IsNullOrEmpty(extension))
+            {
+                extension = Path.GetExtension(input);
+            }
+            if (!Path.GetExtension(output).Equals(extension, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InputValidationException($"The SDK requires the output extension '{extension}'. Choose a new destination with that extension.");
+            }
+
+            using var staged = new SafeOutput(output, extension);
+            if (!await handler.CommitAsync(staged.Stream).ConfigureAwait(false))
+            {
+                throw new IOException("The SDK did not commit the requested change.");
+            }
+            await staged.FinishWritingAsync().ConfigureAwait(false);
+            await VerifyFileAsync(staged.StagePath, label).ConfigureAwait(false);
+            staged.Publish();
+            var isProtected = await VerifyFileAsync(output, label).ConfigureAwait(false);
+            if (options.GenerateChangeAuditEvent)
+            {
+                handler.NotifyCommitSuccessful(output);
+            }
+            return new LabelingResult(true, output, label.Id, isProtected);
+        }
+
+        internal static List<string> ValidateRecipients(IEnumerable<string> recipients)
+        {
+            var result = recipients.Select(value => value.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (result.Count == 0 || result.Any(value =>
+                !System.Net.Mail.MailAddress.TryCreate(value, out var address) || address.Address != value))
+            {
+                throw new InputValidationException("Supply at least one valid recipient email address, without display names.");
+            }
             return result;
         }
 
-        /// <summary>
-        /// Read the label from a file provided via FileOptions.
-        /// </summary>
-        /// <param name="options"></param>
-        /// <returns></returns>
+        private Task<IFileHandler> CreateHandlerAsync(Stream stream, string path, bool audit = false) =>
+            engine.CreateFileHandlerAsync(stream, path, audit);
+
+        private static FileStream OpenRead(string path) =>
+            new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        private async Task<bool> VerifyFileAsync(string path, Label expected)
+        {
+            using var stream = OpenRead(path);
+            using var handler = await CreateHandlerAsync(stream, path).ConfigureAwait(false);
+            return VerifyHandler(handler, expected);
+        }
+
+        internal static bool VerifyHandler(IFileHandler handler, Label expected)
+        {
+            var content = handler.Label;
+            using var protection = handler.Protection;
+            var requiresProtection = expected.HasRightsManagementPolicy || expected.HasAdhocProtection
+                || expected.HasDoNotForwardProtection || expected.HasEncryptOnlyProtection
+                || !string.IsNullOrEmpty(expected.DoubleKeyUrl);
+            if (content?.Label == null
+                || !expected.Id.Equals(content.Label.Id, StringComparison.OrdinalIgnoreCase)
+                || (requiresProtection && (!content.IsProtectionAppliedFromLabel || protection == null)))
+            {
+                throw new InvalidOperationException("Read-back verification failed: the requested label or required protection is missing. No success audit was sent.");
+            }
+            return protection != null;
+        }
+
         public ContentLabel GetLabel(FileOptions options)
         {
-            var handler = CreateFileHandler(options);
+            ThrowIfDisposed();
+            using var stream = OpenRead(options.FileName);
+            using var handler = CreateHandlerAsync(stream, options.FileName, options.IsAuditDiscoveryEnabled)
+                .GetAwaiter().GetResult();
             return handler.Label;
         }
 
-        // Demonstrates how to fetch protection details about a file.
         public ProtectionDetails GetProtectionDetails(FileOptions options)
         {
-
-            var handler = CreateFileHandler(options);
-
-            return new ProtectionDetails()
+            ThrowIfDisposed();
+            using var stream = OpenRead(options.FileName);
+            using var handler = CreateHandlerAsync(stream, options.FileName).GetAwaiter().GetResult();
+            using var protection = handler.Protection;
+            var descriptor = protection?.ProtectionDescriptor;
+            return new ProtectionDetails
             {
-                UserRights = handler.Protection.ProtectionDescriptor.UserRights,
-                UserRoles = handler.Protection.ProtectionDescriptor.UserRoles,
-                IsProtected = FileHandler.GetFileStatus(options.FileName, mipContext).IsProtected(),
-                TemplateId = handler.Protection.ProtectionDescriptor.TemplateId ?? string.Empty
+                UserRights = descriptor?.UserRights,
+                UserRoles = descriptor?.UserRoles,
+                IsProtected = protection != null,
+                TemplateId = descriptor?.TemplateId ?? ""
             };
-        }  
+        }
+
+        private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(disposed, this);
+
+        internal static void CleanupFailedInitialization(params IDisposable?[] resources)
+        {
+            foreach (var resource in resources)
+            {
+                try { DisposeContext(resource); }
+                // Cleanup must not replace the exception that caused initialization to fail.
+                catch (Exception) { }
+            }
+        }
+
+        private static void DisposeContext(IDisposable? context)
+        {
+            try { (context as MipContext)?.ShutDown(); }
+            finally { context?.Dispose(); }
+        }
+
+        public void Dispose()
+        {
+            if (disposed) { return; }
+            disposed = true;
+            try { engine.Dispose(); }
+            finally
+            {
+                try { profile?.Dispose(); }
+                finally
+                {
+                    try { DisposeContext(mipContext); }
+                    finally { authentication?.Dispose(); }
+                }
+            }
+        }
     }
 }

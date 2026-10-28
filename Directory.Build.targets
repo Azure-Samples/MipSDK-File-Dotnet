@@ -1,0 +1,25 @@
+<Project>
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Linux')) and '$(MipSdkPackage)' != ''">
+    <LinuxMipRoot>$(NuGetPackageRoot)\$(MipSdkPackage.ToLowerInvariant())\$(MipSdkVersion)</LinuxMipRoot>
+    <LinuxMipConfiguration>$(Configuration.ToLowerInvariant())</LinuxMipConfiguration>
+  </PropertyGroup>
+
+  <!-- Ubuntu packages use legacy lib/dotnet and build/dotnet folders rather than target-framework folders. -->
+  <ItemGroup Condition="'$(LinuxMipRoot)' != ''">
+    <Reference Include="Microsoft.InformationProtection">
+      <HintPath>$(LinuxMipRoot)\lib\dotnet\Microsoft.InformationProtection.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <None Include="$(LinuxMipRoot)\dotnet\linux2\native\$(LinuxMipConfiguration)\*.so;$(LinuxMipRoot)\build\native\bins\$(LinuxMipConfiguration)\x86_64\*.so"
+          Link="%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="ValidateLinuxMipAssets" BeforeTargets="ResolveReferences" Condition="'$(LinuxMipRoot)' != ''">
+    <Error Condition="!Exists('$(LinuxMipRoot)\lib\dotnet\Microsoft.InformationProtection.dll')"
+           Text="The selected Ubuntu MIP package is missing its managed wrapper. Restore the matching package before building." />
+    <Error Condition="!Exists('$(LinuxMipRoot)\dotnet\linux2\native\$(LinuxMipConfiguration)\libmip_dotnet.so') or !Exists('$(LinuxMipRoot)\build\native\bins\$(LinuxMipConfiguration)\x86_64\libmip_file_sdk.so')"
+           Text="The selected Ubuntu MIP package is missing its native wrapper or File SDK." />
+  </Target>
+</Project>

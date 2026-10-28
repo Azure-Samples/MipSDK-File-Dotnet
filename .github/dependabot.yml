@@ -1,0 +1,15 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directories:
+      - /src
+      - /tests/mipsdk.Tests
+    schedule:
+      interval: weekly
+    groups:
+      dotnet:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

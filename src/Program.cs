@@ -1,95 +1,146 @@
-﻿using System;
-using System.Collections.Generic;
-
 using Microsoft.InformationProtection;
 using Microsoft.InformationProtection.Exceptions;
-using Microsoft.InformationProtection.File;
-using Microsoft.InformationProtection.Policy;
-using Microsoft.InformationProtection.Protection;
+using Microsoft.Identity.Client;
 
-namespace mipsdk
+namespace mipsdk;
+
+public static class Program
 {
-    public class Program
+    public static Task<int> Main(string[] args) => RunAsync(args, () => new AppConfig());
+
+    internal static async Task<int> RunAsync(string[] args, Func<AppConfig> loadConfiguration)
     {
-        private static string clientId;
-        private static string appName;
-        private static string appVersion;
-
-        static int Main(string[] args)
+        if (args is ["--help"] or ["-h"])
         {
-           AppConfig config = new AppConfig();
-           clientId = config.GetClientId();
-           appName = config.GetAppName();
-           appVersion = config.GetAppVersion();
+            Console.WriteLine("MIP File SDK interactive sample\nUsage: mipsdk [--help | --check-config | --native-smoke]\nConfigure appsettings.Local.json or MIPSDK_ environment variables before labeling.\nExit codes: 0 success/no-op, 1 operation failure, 2 invalid configuration/input, 3 cancelled.");
+            return 0;
+        }
+        if (args.Length > 1 || (args.Length == 1 && args[0] is not ("--check-config" or "--native-smoke")))
+        {
+            Console.Error.WriteLine("Unknown arguments. Use --help.");
+            return 2;
+        }
 
-           ApplicationInfo appInfo = new ApplicationInfo()
+        try
+        {
+            if (args is ["--native-smoke"])
             {
-                // ApplicationId should ideally be set to the same ClientId found in the Azure AD App Registration.
-                // This ensures that the clientID in AAD matches the AppId reported in AIP Analytics.
-                ApplicationId = clientId,
-                ApplicationName = appName,
-                ApplicationVersion = appVersion
-            };
-
-            // Initialize Action class, passing in AppInfo.
-            Action action = new Action(appInfo);
-
-            // List all labels available to the engine created in Action
-            IEnumerable<Label> labels = action.ListLabels();          
-
-            foreach (var label in labels)
-            {
-                Console.WriteLine(string.Format("{0} - {1}", label.Name, label.Id));
-
-                if (label.Children.Count > 0)
-                {
-                    foreach (Label child in label.Children)
-                    {
-                        Console.WriteLine(string.Format("\t{0} - {1}", child.Name, child.Id));
-                    }
-                }
+                Action.InitializeNative();
+                Console.WriteLine("Native MIP File SDK loaded. No authentication or policy access was attempted.");
+                return 0;
             }
 
-            Console.Write("Enter a label ID: ");
-            string labelId = Console.ReadLine();
-
-            Console.Write("Enter an input file path: ");
-            string inputPath = Console.ReadLine();
-            if(!System.IO.File.Exists(inputPath))
+            using var config = LoadConfiguration(loadConfiguration);
+            config.Validate();
+            if (args is ["--check-config"])
             {
-                Console.WriteLine("Invalid path.");
-                return -1;
+                Console.WriteLine("Configuration is valid. No authentication or policy access was attempted.");
+                return 0;
             }
 
-            Console.Write("Enter an output file path: ");
-            string outputPath = Console.ReadLine();
-
-            Action.FileOptions options = new Action.FileOptions()
+            if (Console.IsInputRedirected)
             {
-                FileName = inputPath,
-                OutputName = outputPath,
-                LabelId = labelId,
+                Console.Error.WriteLine("Labeling requires an interactive terminal and browser. Use --check-config for credential-free validation.");
+                return 2;
+            }
+
+            Console.WriteLine($"Delegated browser sign-in; cloud: {config.Cloud}; service consent: {config.ServiceConsent}.\nSDK logs may contain identity and file metadata. Do not share caches or logs.");
+            if (config.EnableDiagnosticLogging)
+            {
+                Console.Write("Diagnostic logging is enabled. Consent to diagnostic data collection? [y/N]: ");
+                if (!string.Equals(Console.ReadLine(), "y", StringComparison.OrdinalIgnoreCase)) { return 3; }
+            }
+
+            using var action = await Action.CreateAsync(config);
+            foreach (var label in action.ListLabels())
+            {
+                Console.WriteLine($"{label.Name} - {label.Id}");
+            }
+
+            var options = new Action.FileOptions
+            {
+                LabelId = ReadRequired("Enter an active file label ID: "),
+                FileName = ReadRequired("Enter an input file path: "),
+                OutputName = ReadRequired("Enter a new output file path: "),
                 DataState = DataState.Rest,
                 AssignmentMethod = AssignmentMethod.Standard,
-                IsAuditDiscoveryEnabled = false,
-                GenerateChangeAuditEvent = false                
+                GenerateChangeAuditEvent = config.GenerateChangeAuditEvent
             };
-            
-            System.Console.WriteLine("Writing label {0} to {1}.", labelId, inputPath);
-            // Write label.
-            action.SetLabel(options);      
-            System.Console.WriteLine("Wrote label.");
-            
-            System.Console.WriteLine("Reading label and protection from file.");            
-            options.FileName = options.OutputName;
+            var result = await LabelInteractivelyAsync(action.SetLabelAsync, options, Console.In, Console.Out);
+            Console.WriteLine(result.Changed
+                ? $"Wrote and verified output. Protected: {result.IsProtected}."
+                : $"No SDK change was needed; the input label/protection was verified. No output was created. Protected: {result.IsProtected}.");
+            return 0;
+        }
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine("Operation cancelled. No success was reported.");
+            return 3;
+        }
+        catch (InputValidationException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 2;
+        }
+        catch (ArgumentException)
+        {
+            Console.Error.WriteLine("Invalid input or SDK argument. Check configuration, label policy, recipient addresses, and output paths.");
+            return 2;
+        }
+        catch (MsalException)
+        {
+            Console.Error.WriteLine("Sign-in failed. Check the application registration, redirect URI, cloud, tenant, and delegated permissions.");
+            return 1;
+        }
+        catch (DllNotFoundException)
+        {
+            Console.Error.WriteLine("Native MIP libraries could not load. Check the x64 package, published assets, and platform prerequisites.");
+            return 1;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Operation failed ({ex.GetType().Name}). No success was reported. Check permissions, label policy, output paths, and native prerequisites. If an output exists after final verification failed, retain it for private investigation.");
+            return 1;
+        }
+    }
 
-            Action action2 = new Action(appInfo);
-            ContentLabel contentLabel = action2.GetLabel(options);
-            
-            Console.WriteLine(string.Format("File Label: {0} \r\nIsProtected: {1}", contentLabel.Label.Name, contentLabel.IsProtectionAppliedFromLabel.ToString()));
-            System.Console.WriteLine("Press a key to exit.");
-            Console.ReadKey();
-            return 0;                  
-        }        
+    private static AppConfig LoadConfiguration(Func<AppConfig> load)
+    {
+        try { return load(); }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or FormatException)
+        {
+            throw new InputValidationException("Configuration could not be read. Check appsettings.json and appsettings.Local.json for valid JSON and readable permissions.");
+        }
+    }
+
+    private static string ReadRequired(string prompt)
+    {
+        Console.Write(prompt);
+        var value = Console.ReadLine();
+        return string.IsNullOrWhiteSpace(value) ? throw new OperationCanceledException() : value.Trim();
+    }
+
+    internal static async Task<Action.LabelingResult> LabelInteractivelyAsync(
+        Func<Action.FileOptions, Task<Action.LabelingResult>> label,
+        Action.FileOptions options, TextReader input, TextWriter output)
+    {
+        while (true)
+        {
+            try { return await label(options); }
+            catch (JustificationRequiredException) when (options.Justification == null)
+            {
+                output.Write("Policy requires downgrade justification. Enter an authorized reason (blank cancels): ");
+                var reason = input.ReadLine();
+                if (string.IsNullOrWhiteSpace(reason)) { throw new OperationCanceledException(); }
+                options.Justification = reason.Trim();
+            }
+            catch (AdhocProtectionRequiredException) when (options.AdhocRecipients == null)
+            {
+                output.Write("Policy requires user-defined permissions. Enter approved recipient emails separated by commas (Viewer rights; blank cancels): ");
+                var recipients = input.ReadLine();
+                if (string.IsNullOrWhiteSpace(recipients)) { throw new OperationCanceledException(); }
+                options.AdhocRecipients = Action.ValidateRecipients(recipients.Split(','));
+            }
+        }
     }
 }

@@ -1,120 +1,170 @@
-using System;
 using Microsoft.InformationProtection;
-using Microsoft.InformationProtection.Exceptions;
 using Microsoft.Identity.Client;
-using System.Linq;
-using System.Threading.Tasks;
 
-public class AuthDelegateImpl : IAuthDelegate
+public sealed class AuthDelegateImpl : IAuthDelegate, IDisposable
 {
-    AppConfig config = new AppConfig();
+    private readonly AppConfig config;
+    private readonly IPublicClientApplication application;
+    private readonly SemaphoreSlim acquisition = new(1, 1);
+    private string? accountId;
+    private bool disposed;
 
-    private static bool isMultitenantApp;
-    private static string tenant;
-    private ApplicationInfo appInfo;
-
-    // Microsoft Authentication Library IPublicClientApplication
-    private IPublicClientApplication _app;
-
-    // Define MSAL scopes.
-    // As of the 1.7 release, the two services backing the MIP SDK, RMS and MIP Sync Service, provide resources instead of scopes.
-    // The List<string> entities below will be used to map the resources to scopes and to pass those scopes to Azure AD via MSAL.
-
-    public AuthDelegateImpl(ApplicationInfo appInfo)
+    public AuthDelegateImpl(AppConfig config) : this(config, CreateApplication(config))
     {
-        //redirectUri = config.GetRedirectUri();        
-        isMultitenantApp = Convert.ToBoolean(config.GetIsMultiTenantApp());
-        tenant = config.GetTenantId();
-        this.appInfo = appInfo;
     }
 
-    /// <summary>
-    /// AcquireToken is called by the SDK when auth is required for an operation. 
-    /// Adding or loading an IFileEngine is typically where this will occur first.
-    /// The SDK provides all three parameters below.Identity from the EngineSettings.
-    /// Authority and resource are provided from the 401 challenge.
-    /// The SDK cares only that an OAuth2 token is returned.How it's fetched isn't important.
-    /// In this sample, we fetch the token using Active Directory Authentication Library(ADAL).
-    /// </summary>
-    /// <param name="identity"></param>
-    /// <param name="authority"></param>
-    /// <param name="resource"></param>
-    /// <returns>The OAuth2 token for the user</returns>
-    public string AcquireToken(Identity identity, string authority, string resource, string claims)
+    internal AuthDelegateImpl(AppConfig config, IPublicClientApplication application)
     {
-        return AcquireTokenAsync(authority, resource, claims, isMultitenantApp).Result.AccessToken;
+        config.Validate();
+        this.config = config;
+        this.application = application;
     }
 
-    /// <summary>
-    /// Implements token acquisition logic via the Microsoft Authentication Library.
-    /// 
-    /// /// </summary>
-    /// <param name="identity"></param>
-    /// <param name="authority"></param>
-    /// <param name="resource"></param>
-    /// <param name="claims"></param>
-    /// <returns></returns>
-    public async Task<AuthenticationResult> AcquireTokenAsync(string authority, string resource, string claims, bool isMultiTenantApp = true)
+    private static IPublicClientApplication CreateApplication(AppConfig config)
     {
-        AuthenticationResult result = null;
+        config.Validate();
+        return PublicClientApplicationBuilder.Create(config.ClientId)
+            .WithAuthority(config.BootstrapAuthority, validateAuthority: true)
+            .WithRedirectUri(config.RedirectUri)
+            .WithLogging((_, _, _) => { }, LogLevelForMsal, enablePiiLogging: false)
+            .Build();
+    }
 
-        // Create an auth context using the provided authority and token cache
-        if (_app == null)
-        {
-            if (isMultitenantApp)
-                _app = PublicClientApplicationBuilder.Create(appInfo.ApplicationId)
-                    .WithAuthority(authority)
-                    .WithDefaultRedirectUri()
-                    .Build();
-            else
-            {
-                if (authority.ToLower().Contains("common"))
-                {
-                    var authorityUri = new Uri(authority);
-                    authority = String.Format("https://{0}/{1}", authorityUri.Host, tenant);
-                }
-                _app = PublicClientApplicationBuilder.Create(appInfo.ApplicationId)
-                    .WithAuthority(authority)
-                    .WithDefaultRedirectUri()
-                    .Build();
+    private const Microsoft.Identity.Client.LogLevel LogLevelForMsal = Microsoft.Identity.Client.LogLevel.Error;
 
-            }
-        }
-        var accounts = await _app.GetAccountsAsync();//).GetAwaiter().GetResult();
+    public string AcquireToken(Identity identity, string authority, string resource, string claims) =>
+        AcquireTokenAsync(authority, resource, claims, identity?.Email).GetAwaiter().GetResult().AccessToken;
 
-        // Append .default to the resource passed in to AcquireToken().
-        string[] scopes = new string[] { resource[resource.Length - 1].Equals('/') ? $"{resource}.default" : $"{resource}/.default" };
-
+    public async Task<AuthenticationResult> AcquireTokenAsync(
+        string authority, string resource, string? claims, string? expectedUser = null)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        var validatedAuthority = ValidateAuthority(authority);
+        var tenant = new Uri(validatedAuthority).AbsolutePath.Trim('/');
+        var scopes = new[] { BuildDefaultScope(resource) };
+        await acquisition.WaitAsync().ConfigureAwait(false);
         try
         {
-            result = await _app.AcquireTokenSilent(scopes, accounts.FirstOrDefault())
-                .WithClaims(claims)
-                .ExecuteAsync();
-        }
+            var account = SelectAccount(await application.GetAccountsAsync().ConfigureAwait(false),
+                accountId, expectedUser);
+            AuthenticationResult result;
+            try
+            {
+                result = await application.AcquireTokenSilent(scopes, account)
+                    .WithTenantId(tenant)
+                    .WithClaims(claims)
+                    .ExecuteAsync().ConfigureAwait(false);
+            }
+            catch (MsalUiRequiredException)
+            {
+                result = await application.AcquireTokenInteractive(scopes)
+                    .WithTenantId(tenant)
+                    .WithLoginHint(expectedUser ?? account?.Username)
+                    .WithClaims(claims)
+                    .ExecuteAsync().ConfigureAwait(false);
+            }
 
-        catch (MsalUiRequiredException ex)
+            ValidateResult(result, expectedUser);
+            accountId = result.Account.HomeAccountId.Identifier;
+            return result;
+        }
+        finally
         {
-            System.Console.WriteLine(ex.Message);
-            result = _app.AcquireTokenInteractive(scopes)
-                .WithClaims(claims)
-                .ExecuteAsync()
-                .ConfigureAwait(false)
-                .GetAwaiter()
-                .GetResult();
+            acquisition.Release();
         }
-
-        // Return the token. The token is sent to the resource.                           
-        return result;
     }
 
-    /// <summary>
-    /// The GetUserIdentity() method is used to pre-identify the user and obtain the UPN. 
-    /// The UPN is later passed set on FileEngineSettings for service location.
-    /// </summary>
-    /// <returns>Microsoft.InformationProtection.Identity</returns>
-    public Identity GetUserIdentity()
+    internal string ValidateAuthority(string authority)
     {
-        AuthenticationResult result = AcquireTokenAsync("https://login.microsoftonline.com/common", "https://graph.microsoft.com", null).Result;
+        var uri = ValidateHttpsUri(authority, "Authority");
+        var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length != 1)
+        {
+            throw new InputValidationException("Authority must identify exactly one tenant.");
+        }
+
+        var tenant = segments[0];
+        var shared = tenant.Equals("common", StringComparison.OrdinalIgnoreCase)
+            || tenant.Equals("organizations", StringComparison.OrdinalIgnoreCase);
+        if (!shared && (!Guid.TryParse(tenant, out var tenantGuid) || tenantGuid == Guid.Empty))
+        {
+            throw new InputValidationException("Authority must identify an organizational tenant.");
+        }
+
+        if (!config.IsMultiTenant)
+        {
+            if (!shared && !tenant.Equals(config.TenantId, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InputValidationException("Authority does not match the configured tenant.");
+            }
+            tenant = config.TenantId;
+        }
+
+        return $"https://{uri.Host}/{tenant}";
+    }
+
+    internal string BuildDefaultScope(string resource)
+    {
+        var uri = ValidateHttpsUri(resource, "Resource");
+        var normalized = uri.AbsoluteUri.TrimEnd('/');
+        if (normalized.EndsWith("/.default", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InputValidationException("The SDK resource must be an audience, not an OAuth scope.");
+        }
+
+        return $"{normalized}/.default";
+    }
+
+    internal static Uri ValidateHttpsUri(string value, string name)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            || uri.Scheme != Uri.UriSchemeHttps || !uri.IsDefaultPort
+            || !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query)
+            || !string.IsNullOrEmpty(uri.Fragment))
+        {
+            throw new InputValidationException($"{name} must be an absolute HTTPS URI without credentials, a custom port, query, or fragment.");
+        }
+        return uri;
+    }
+
+    internal static IAccount? SelectAccount(IEnumerable<IAccount> accounts, string? selectedId, string? expectedUser)
+    {
+        if (selectedId != null)
+        {
+            return accounts.SingleOrDefault(account => account.HomeAccountId.Identifier == selectedId
+                && (string.IsNullOrEmpty(expectedUser)
+                    || account.Username.Equals(expectedUser, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        return string.IsNullOrEmpty(expectedUser) ? null : accounts.SingleOrDefault(
+            account => account.Username.Equals(expectedUser, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void ValidateResult(AuthenticationResult result, string? expectedUser)
+    {
+        if (result.Account == null || string.IsNullOrWhiteSpace(result.Account.Username)
+            || result.Account.HomeAccountId == null
+            || (accountId != null && accountId != result.Account.HomeAccountId.Identifier)
+            || (!string.IsNullOrEmpty(expectedUser)
+                && !expectedUser.Equals(result.Account.Username, StringComparison.OrdinalIgnoreCase))
+            || (!config.IsMultiTenant
+                && !config.TenantId.Equals(result.TenantId, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException("Sign-in returned a different user or tenant. Sign in with the intended organizational account.");
+        }
+    }
+
+    public async Task<Identity> GetUserIdentityAsync()
+    {
+        var result = await AcquireTokenAsync(config.BootstrapAuthority, config.IdentityResource, null)
+            .ConfigureAwait(false);
         return new Identity(result.Account.Username);
+    }
+
+    public void Dispose()
+    {
+        if (disposed) { return; }
+        disposed = true;
+        acquisition.Dispose();
     }
 }

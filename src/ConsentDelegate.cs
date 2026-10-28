@@ -1,10 +1,6 @@
-using System;
 using Microsoft.InformationProtection;
 
-class ConsentDelegateImpl : IConsentDelegate
+internal sealed class ConsentDelegateImpl(Consent consent) : IConsentDelegate
 {
-    public Consent GetUserConsent(string url)
-    {
-        return Consent.AcceptAlways;
-    }
+    public Consent GetUserConsent(string url) => consent;
 }
