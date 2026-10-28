@@ -96,7 +96,7 @@ For example, `MIPSDK_AppSettings__ida__ClientId` overrides `AppSettings:ida:Clie
 | `sdk:GenerateChangeAuditEvent` | Default `false`; successful-change notification only after output verification |
 | `sdk:CachePath` | Default: per-user local application data under `MipSdkFileSample/<client>/<cloud>`; optional absolute/local override |
 
-The sample does not maintain authority-host or resource-audience allowlists. `FileEngineSettings.Cloud` is explicitly set from `sdk:Cloud`, so the SDK discovers the policy/protection services for that cloud. MSAL authority validation remains enabled, and token requests use the configured cloud's MSAL authority with the validated SDK tenant and audience. HTTPS/URI validation, single-tenant pinning, and account binding remain in place. Cloud selection is not an endpoint firewall. MSAL authority mappings are:
+`FileEngineSettings.Cloud` is explicitly set from `sdk:Cloud`, so the SDK discovers the policy/protection services for that cloud. MSAL authority validation remains enabled, and token requests use the configured cloud's MSAL authority with the validated SDK tenant and audience. HTTPS/URI validation, single-tenant pinning, and account binding remain in place. Cloud selection is not an endpoint firewall. MSAL authority mappings are:
 
 | Cloud | Authority host |
 | --- | --- |
